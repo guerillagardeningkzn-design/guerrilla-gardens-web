@@ -1,6 +1,6 @@
 // ────────────────────────────────────────────────
 // Configuration – change this!
-const API_URL = "https://script.google.com/macros/s/YOUR_WEB_APP_ID_HERE/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbzTLEZjy5G5Xs9Vs5hS9QzWHlfMJTF-5yF0Q-wCLYmPW6un0UAVHCnzx0Icu5ZMfF5K/exec";
 // ────────────────────────────────────────────────
 
 let currentUser = null;
