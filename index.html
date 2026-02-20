@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Guerrilla Gardens</title>
   
-  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#1a3c1a">
-  <link rel="icon" href="/assets/icons/icon-192.png" type="image/png">
+  <link rel="icon" href="assets/icons/icon-192.png" type="image/png">
   
-  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="css/main.css">
 </head>
 <body>
 
@@ -26,14 +26,16 @@
 </div>
 
 <div id="dashboard" class="screen">
-  <h1>Welcome, <span id="user-name">...</span></h1>
-  <p>XP: <span id="user-xp">0</span> | Compost: <span id="compost-basic">0</span></p>
-  <button onclick="location.href='map.html'">Open Map</button>
-  <!-- more dashboard content later -->
+  <div class="content">
+    <h1>Welcome, <span id="user-name">...</span></h1>
+    <p>XP: <span id="user-xp">0</span> | Compost: <span id="compost-basic">0</span></p>
+    <button class="big-btn" onclick="alert('Map screen coming next — working on it!')">Open Map</button>
+    <!-- placeholder for future map link -->
+  </div>
 </div>
 
-<script src="/js/auth.js"></script>
-<script src="/js/main.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/main.js"></script>
 
 </body>
 </html>
