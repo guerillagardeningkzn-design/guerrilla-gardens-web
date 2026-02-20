@@ -1,5 +1,5 @@
 // ────────────────────────────────────────────────
-//    CHANGE THIS to your real Apps Script web app URL
+// UPDATE THIS with your latest /exec URL after each redeploy
 const API_URL = "https://script.google.com/macros/s/AKfycbzTLEZjy5G5Xs9Vs5hS9QzWHlfMJTF-5yF0Q-wCLYmPW6un0UAVHCnzx0Icu5ZMfF5K/exec";
 // ────────────────────────────────────────────────
 
@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const splash     = document.getElementById('splash');
   const dashboard  = document.getElementById('dashboard');
 
-  // Load saved session if exists
+  // Load saved session
   const saved = localStorage.getItem('gg_user');
   if (saved) {
     try {
@@ -20,35 +20,33 @@ document.addEventListener('DOMContentLoaded', () => {
         showDashboard();
         return;
       }
-    } catch (e) {
+    } catch {
       localStorage.removeItem('gg_user');
     }
   }
 
   btnStart.addEventListener('click', async () => {
     btnStart.disabled = true;
-    statusEl.textContent = "Connecting to server...";
+    statusEl.textContent = "Connecting...";
 
     const name = prompt("Choose your gardener name:", "Guerrilla Grower")?.trim();
     if (!name || name.length < 2) {
-      statusEl.textContent = "Name too short — try again.";
+      statusEl.textContent = "Name too short — cancelled.";
       btnStart.disabled = false;
       return;
     }
 
     try {
-      const response = await fetch(API_URL, {
-        method: 'POST',
+      const url = `${API_URL}?action=register&name=${encodeURIComponent(name)}`;
+
+      const response = await fetch(url, {
+        method: 'GET',
         mode: 'cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'register',
-          name: name
-        })
+        cache: 'no-cache'
       });
 
       if (!response.ok) {
-        throw new Error(`Server responded ${response.status}`);
+        throw new Error(`Server returned ${response.status}`);
       }
 
       const data = await response.json();
@@ -63,8 +61,8 @@ document.addEventListener('DOMContentLoaded', () => {
         btnStart.disabled = false;
       }
     } catch (err) {
-      console.error(err);
-      statusEl.textContent = "Cannot reach server. Check internet / Apps Script URL.";
+      console.error('Auth fetch error:', err);
+      statusEl.textContent = "Cannot reach server. Check internet or Apps Script URL.";
       btnStart.disabled = false;
     }
   });
