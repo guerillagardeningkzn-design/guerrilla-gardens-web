@@ -105,81 +105,92 @@
   // ────────────────────────────────────────────────
 async function loadNicknameWords() {
   const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=NameCreationSettings`;
+  let text = '';   // declare here so it's always defined, even in catch
 
   try {
+    statusEl.textContent = "Loading word lists from sheet...";
+    
     const res = await fetch(url);
     if (!res.ok) {
-      throw new Error(`gviz HTTP error: ${res.status} ${res.statusText}`);
+      throw new Error(`gviz fetch failed → HTTP ${res.status} ${res.statusText}`);
     }
 
-    let text = await res.text();
+    text = await res.text();
 
-    // More aggressive & safe stripping of the wrapper
-    // Remove everything before the first { and after the last }
-    text = text.replace(/^[^{]*{/, '{');           // remove prefix up to first {
-    text = text.replace(/}[^}]*$/, '}');           // remove suffix after last }
+    // Log raw response length for debugging
+    console.log(`gviz raw response length: ${text.length} chars`);
 
-    // Also remove known prefixes if still present
+    // Strip wrapper (very tolerant version)
     text = text
+      .replace(/^[^]*?{/, '{')               // everything before first {
+      .replace(/}[^]*?$/, '}')               // everything after last }
       .replace(/^\/\*O_o\*\//, '')
-      .replace(/^google\.visualization\.Query\.setResponse\s*\(\s*/, '')
-      .replace(/\s*\)\s*;?\s*$/, '');
+      .replace(/^google\.visualization\.Query\.setResponse\s*\(\s*/i, '')
+      .replace(/\s*\)\s*;?\s*$/, '')
+      .trim();
 
-    // Trim any remaining whitespace
-    text = text.trim();
+    // Safety check before parse
+    if (!text.startsWith('{')) {
+      throw new Error(`Stripped text does not start with '{' → likely still wrapped\nPreview: ${text.substring(0, 150)}`);
+    }
 
-    // Now it should be pure JSON
     const parsed = JSON.parse(text);
 
-    // ────────────────────────────────────────────────
-    // Extract columns and rows
-    // ────────────────────────────────────────────────
-    const cols = parsed.table.cols.map(col => col.label || col.id || `col${col.id || ''}`);
-    const rows = parsed.table.rows.map(row => {
+    // Extract columns & rows
+    const cols = parsed.table.cols.map(col => col.label?.trim() || col.id || `col${col.id || ''}`);
+    const rows = parsed.table.rows.map(r => {
       const obj = {};
-      row.c.forEach((cell, i) => {
+      r.c.forEach((cell, i) => {
         obj[cols[i]] = cell?.v ?? null;
       });
       return obj;
     });
 
-    // Build nickname config
+    // Build config
     const personas = [];
     const botanicals = [];
     let min = 10000;
     let max = 99999;
 
     rows.forEach(row => {
-      const persona = row["Action & Persona"]?.toString()?.trim();
-      const botanical = row["Botanical & Earth"]?.toString()?.trim();
-      if (persona) personas.push(persona);
-      if (botanical) botanicals.push(botanical);
+      const p = row["Action & Persona"]?.toString()?.trim();
+      const b = row["Botanical & Earth"]?.toString()?.trim();
+      if (p) personas.push(p);
+      if (b) botanicals.push(b);
 
-      // Use first valid min/max found
       const rowMin = Number(row.Min);
       const rowMax = Number(row.Max);
       if (!isNaN(rowMin) && min === 10000) min = rowMin;
       if (!isNaN(rowMax) && max === 99999) max = rowMax;
     });
 
-    if (personas.length === 0 || botanicals.length === 0) {
-      throw new Error("No valid words found in NameCreationSettings");
+    if (!personas.length || !botanicals.length) {
+      throw new Error("No valid persona/botanical words found in sheet");
     }
 
     if (min >= max) {
       throw new Error("Invalid min/max range in sheet");
     }
 
+    console.log(`Loaded ${personas.length} personas and ${botanicals.length} botanicals`);
+
     return { personas, botanicals, min, max };
 
   } catch (err) {
-    console.error("gviz load failed:", err, "Raw response preview:", text?.substring(0, 200));
-    statusEl.textContent = "Could not load word lists from sheet – using fallback";
+    console.error("gviz load failed:", err);
+    if (text.length > 0) {
+      console.log("Raw response preview (first 300 chars):");
+      console.log(text.substring(0, 300));
+    } else {
+      console.log("No response text received (fetch likely failed early)");
+    }
+
+    statusEl.textContent = "Could not load word lists from sheet – using fallback words";
     statusEl.className = "error";
 
-    // Hardcoded fallback in case sheet is unreachable / misconfigured
+    // Fallback words if sheet is unreachable or parsing fails
     return {
-      personas: ["Grand", "Shadow", "Wild", "Secret", "Silent", "Mystic", "Rogue", "Hidden", "Fierce"],
+      personas: ["Grand", "Shadow", "Wild", "Secret", "Silent", "Mystic", "Rogue", "Hidden", "Fierce", "Swift"],
       botanicals: ["Basil", "Leaf", "Root", "Bloom", "Thorn", "Moss", "Fern", "Petal", "Vine", "Sprout"],
       min: 10000,
       max: 99999
