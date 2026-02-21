@@ -58,53 +58,39 @@
   </style>
 </head>
 <body>
-
 <div class="container">
   <h1>Guerrilla Gardens</h1>
   <h2>Choose Your Guerrilla Nickname</h2>
-
   <div id="nickname-display">Loading your nickname suggestion...</div>
-
   <div class="buttons">
     <button id="btn-regenerate">Regenerate</button>
     <button id="btn-accept">Accept this name</button>
   </div>
-
   <div id="status"></div>
 </div>
-
 <script>
 // Checkpoint 1 – Confirmed working pattern (Feb 21, 2026)
 // 1. Reading from sheets (client-side, no CORS pain)
 const SHEET_ID = "1syH1gj9L-HHC3dlGoO-RTUthIXsEeUYC_81jlAvHfsg";
-
 async function fetchSheetData(tabName) {
   const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(tabName)}`;
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`gviz fetch: ${res.status}`);
     let text = await res.text();
+    // Reformed stripping logic – use proper RegExp objects + more robust handling
+    // Handles common wrappers: google.visualization.Query.setResponse({...}); or // [ ...
+    text = text.replace(new RegExp('^//.*', 'g'), '');  // remove // comments
+    text = text.replace(new RegExp('^/\\*O_o\\*/', 'g'), '');  // O_o wrapper if present
+    text = text.replace(new RegExp('^google\\.visualization\\.Query\\.setResponse\\s*\\(', 'i'), '');  // main prefix
+    text = text.replace(new RegExp('\\)\\s*;?\\s*$', 'g'), '');  // trailing )
+    text = text.trim();
 
-    // Step 1: Remove common leading wrappers (no regex – use indexOf + slice)
-    const prefix = 'google.visualization.Query.setResponse(';
-    let startIdx = text.indexOf(prefix);
-    if (startIdx !== -1) {
-      text = text.slice(startIdx + prefix.length);
-    } else {
-      // Fallback if no standard prefix – check for raw JSON start
-      startIdx = text.indexOf('{');
-      if (startIdx !== -1) text = text.slice(startIdx);
+    if (text.startsWith('(') && text.endsWith(')')) {
+      text = text.slice(1, -1).trim();
     }
 
-    // Step 2: Remove trailing ) ; and any extras
-    let endIdx = text.lastIndexOf(')');
-    if (endIdx !== -1) {
-      text = text.slice(0, endIdx);
-    }
-    text = text.trim();  // Clean whitespace
-
-    // Step 3: Fix trailing commas (simple loop instead of regex)
-    // This scans for , followed by } or ] (common JSON error in gviz)
+    // Fix trailing commas (simple loop instead of regex)
     let fixedText = '';
     for (let i = 0; i < text.length; i++) {
       if (text[i] === ',' && (text[i+1] === '}' || text[i+1] === ']')) {
@@ -114,10 +100,35 @@ async function fetchSheetData(tabName) {
     }
     text = fixedText;
 
-    // Step 4: Parse the cleaned text
+    // Now parse
     const parsed = JSON.parse(text);
 
-    // ... (rest of the function unchanged: decodeHtmlEntities, extract cols/rows, etc.)
+    // Decode entities (e.g. &amp; → &)
+    function decodeHtmlEntities(str) {
+      const txt = document.createElement("textarea");
+      txt.innerHTML = str;
+      return txt.value;
+    }
+
+    // Extract columns + rows with safe checks
+    let cols = [];
+    if (parsed.table && Array.isArray(parsed.table.cols)) {
+      cols = parsed.table.cols.map(col => {
+        const raw = col.label || col.id || `col${col.id || ''}`;
+        return decodeHtmlEntities(raw.trim());
+      });
+    }
+
+    let rows = [];
+    if (parsed.table && Array.isArray(parsed.table.rows)) {
+      rows = parsed.table.rows.map(r => {
+        const obj = {};
+        (r.c || []).forEach((cell, i) => {
+          if (i < cols.length) obj[cols[i]] = cell?.v ?? null;
+        });
+        return obj;
+      });
+    }
 
     return { success: true, columns: cols, rows };
   } catch (err) {
@@ -125,10 +136,8 @@ async function fetchSheetData(tabName) {
     return { success: false, error: err.message };
   }
 }
-
 // 2. Writing / updating (server-side via Apps Script POST + no-cors)
 const API_BASE = "https://script.google.com/macros/s/AKfycbzTLEZjy5G5Xs9Vs5hS9QzWHlfMJTF5yF0Q-wCLYmPW6un0UAVHCnzx0Icu5ZMfF5K/exec";
-
 async function sendToSheet(payload) {
   try {
     await fetch(API_BASE, {
@@ -145,54 +154,41 @@ async function sendToSheet(payload) {
     return false;
   }
 }
-
 // ────────────────────────────────────────────────
 // Nickname generation using Checkpoint 1 read method
 // ────────────────────────────────────────────────
 let currentNickname = "";
-
 const display = document.getElementById("nickname-display");
 const statusEl = document.getElementById("status");
-
 async function generateNickname() {
   display.textContent = "Generating...";
   statusEl.textContent = "";
   statusEl.className = "";
-
   try {
     const data = await fetchSheetData("NameCreationSettings");
-
     if (!data.success) throw new Error(data.error || "Failed to load sheet");
-
     const personas = [];
     const botanicals = [];
     let min = 10000;
     let max = 99999;
-
     data.rows.forEach(row => {
       const p = row["Action & Persona"]?.toString()?.trim();
       const b = row["Botanical & Earth"]?.toString()?.trim();
       if (p) personas.push(p);
-      if (b) botanicals.push(b);
-
+      if (b) Botanicals.push(b);
       const rowMin = Number(row.Min);
       const rowMax = Number(row.Max);
       if (!isNaN(rowMin) && min === 10000) min = rowMin;
       if (!isNaN(rowMax) && max === 99999) max = rowMax;
     });
-
     if (personas.length === 0 || botanicals.length === 0) {
       throw new Error("No words found in sheet");
     }
-
     const p = personas[Math.floor(Math.random() * personas.length)];
-    const b = botanicals[Math.floor(Math.random() * botanicals.length)];
-
+    const b = Botanicals[Math.floor(Math.random() * Botanicals.length)];
     const num = Math.floor(Math.random() * (max - min + 1)) + min;
-
     currentNickname = `${p} ${b} ${num}`;
     display.textContent = currentNickname;
-
   } catch (err) {
     console.error("Generation failed:", err);
     display.textContent = "(generation failed)";
@@ -200,47 +196,38 @@ async function generateNickname() {
     statusEl.className = "error";
   }
 }
-
 async function acceptNickname() {
   if (!currentNickname) {
     statusEl.textContent = "No nickname generated yet";
     statusEl.className = "error";
     return;
   }
-
   statusEl.textContent = "Saving...";
   statusEl.className = "";
-
   try {
     const success = await sendToSheet({
       action: "set_nickname",
       nickname: currentNickname
     });
-
     if (success) {
       statusEl.textContent = `Saved: ${currentNickname} ✓`;
       statusEl.className = "success";
       localStorage.setItem("gg_nickname", currentNickname);
-
       setTimeout(() => {
         alert(`Welcome, ${currentNickname}!`);
       }, 1600);
     } else {
       throw new Error("Send failed");
     }
-
   } catch (err) {
     statusEl.textContent = "Save failed – check console/sheet";
     statusEl.className = "error";
   }
 }
-
 // Event listeners & start
 document.getElementById("btn-regenerate")?.addEventListener("click", generateNickname);
 document.getElementById("btn-accept")?.addEventListener("click", acceptNickname);
-
 generateNickname();
 </script>
-
 </body>
 </html>
