@@ -103,62 +103,89 @@
   // ────────────────────────────────────────────────
   // Fetch word lists from NameCreationSettings via public gviz endpoint
   // ────────────────────────────────────────────────
-  async function loadNicknameWords() {
-    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=NameCreationSettings`;
+async function loadNicknameWords() {
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=NameCreationSettings`;
 
-    try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`gviz fetch failed: ${res.status}`);
-
-      let text = await res.text();
-      text = text
-        .replace(/^\/\*O_o\*\//, '')
-        .replace(/^google\.visualization\.Query\.setResponse\(/, '')
-        .replace(/\);?$/, '');
-
-      const parsed = JSON.parse(text);
-      const cols = parsed.table.cols.map(c => c.label || c.id);
-      const rows = parsed.table.rows.map(r => {
-        const obj = {};
-        r.c.forEach((cell, i) => {
-          obj[cols[i]] = cell?.v ?? null;
-        });
-        return obj;
-      });
-
-      // Build arrays – skip header row (already done by gviz)
-      const personas = [];
-      const botanicals = [];
-      let min = 10000, max = 99999;
-
-      rows.forEach(row => {
-        if (row["Action & Persona"]) personas.push(row["Action & Persona"].trim());
-        if (row["Botanical & Earth"]) botanicals.push(row["Botanical & Earth"].trim());
-
-        if (row.Min && !isNaN(Number(row.Min))) min = Number(row.Min);
-        if (row.Max && !isNaN(Number(row.Max))) max = Number(row.Max);
-      });
-
-      if (!personas.length || !botanicals.length) {
-        throw new Error("No words found in NameCreationSettings");
-      }
-
-      return { personas, botanicals, min, max };
-
-    } catch (err) {
-      console.error("gviz load failed:", err);
-      statusEl.textContent = "Could not load word lists – using fallback";
-      statusEl.className = "error";
-
-      // Hardcoded fallback if sheet is unreachable
-      return {
-        personas: ["Grand", "Shadow", "Wild", "Secret", "Mystic", "Rogue", "Hidden"],
-        botanicals: ["Basil", "Leaf", "Root", "Bloom", "Thorn", "Moss", "Fern"],
-        min: 10000,
-        max: 99999
-      };
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`gviz HTTP error: ${res.status} ${res.statusText}`);
     }
+
+    let text = await res.text();
+
+    // More aggressive & safe stripping of the wrapper
+    // Remove everything before the first { and after the last }
+    text = text.replace(/^[^{]*{/, '{');           // remove prefix up to first {
+    text = text.replace(/}[^}]*$/, '}');           // remove suffix after last }
+
+    // Also remove known prefixes if still present
+    text = text
+      .replace(/^\/\*O_o\*\//, '')
+      .replace(/^google\.visualization\.Query\.setResponse\s*\(\s*/, '')
+      .replace(/\s*\)\s*;?\s*$/, '');
+
+    // Trim any remaining whitespace
+    text = text.trim();
+
+    // Now it should be pure JSON
+    const parsed = JSON.parse(text);
+
+    // ────────────────────────────────────────────────
+    // Extract columns and rows
+    // ────────────────────────────────────────────────
+    const cols = parsed.table.cols.map(col => col.label || col.id || `col${col.id || ''}`);
+    const rows = parsed.table.rows.map(row => {
+      const obj = {};
+      row.c.forEach((cell, i) => {
+        obj[cols[i]] = cell?.v ?? null;
+      });
+      return obj;
+    });
+
+    // Build nickname config
+    const personas = [];
+    const botanicals = [];
+    let min = 10000;
+    let max = 99999;
+
+    rows.forEach(row => {
+      const persona = row["Action & Persona"]?.toString()?.trim();
+      const botanical = row["Botanical & Earth"]?.toString()?.trim();
+      if (persona) personas.push(persona);
+      if (botanical) botanicals.push(botanical);
+
+      // Use first valid min/max found
+      const rowMin = Number(row.Min);
+      const rowMax = Number(row.Max);
+      if (!isNaN(rowMin) && min === 10000) min = rowMin;
+      if (!isNaN(rowMax) && max === 99999) max = rowMax;
+    });
+
+    if (personas.length === 0 || botanicals.length === 0) {
+      throw new Error("No valid words found in NameCreationSettings");
+    }
+
+    if (min >= max) {
+      throw new Error("Invalid min/max range in sheet");
+    }
+
+    return { personas, botanicals, min, max };
+
+  } catch (err) {
+    console.error("gviz load failed:", err, "Raw response preview:", text?.substring(0, 200));
+    statusEl.textContent = "Could not load word lists from sheet – using fallback";
+    statusEl.className = "error";
+
+    // Hardcoded fallback in case sheet is unreachable / misconfigured
+    return {
+      personas: ["Grand", "Shadow", "Wild", "Secret", "Silent", "Mystic", "Rogue", "Hidden", "Fierce"],
+      botanicals: ["Basil", "Leaf", "Root", "Bloom", "Thorn", "Moss", "Fern", "Petal", "Vine", "Sprout"],
+      min: 10000,
+      max: 99999
+    };
   }
+}
 
   // ────────────────────────────────────────────────
   // Generate nickname client-side from loaded words
