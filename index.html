@@ -92,9 +92,7 @@
 </div>
 
 <script>
-  // ────────────────────────────────────────────────
   // CONFIG
-  // ────────────────────────────────────────────────
   const SHEET_ID = "1syH1gj9L-HHC3dlGoO-RTUthIXsEeUYC_81jlAvHfsg";
   const API_BASE = "https://script.google.com/macros/s/AKfycbzTLEZjy5G5Xs9Vs5hS9QzWHlfMJTF5yF0Q-wCLYmPW6un0UAVHCnzx0Icu5ZMfF5K/exec";
 
@@ -104,44 +102,34 @@
   const statusEl = document.getElementById("status");
 
   // ────────────────────────────────────────────────
-  // 1. Load word lists from sheet (must come FIRST)
+  // Load word lists + min/max from sheet (gviz endpoint)
   // ────────────────────────────────────────────────
   async function loadNicknameWords() {
     const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=NameCreationSettings`;
-    let rawText = '';
-    let cleanedText = '';
-    let parsed = null;
+    let text = '';
 
     try {
       statusEl.textContent = "Loading word lists...";
       statusEl.className = '';
 
       const res = await fetch(url);
-      if (!res.ok) throw new Error(`gviz HTTP ${res.status}`);
+      if (!res.ok) throw new Error(`gviz fetch: ${res.status}`);
 
-      rawText = await res.text();
-      console.log(`Raw gviz length: ${rawText.length} chars`);
+      text = await res.text();
 
-      cleanedText = rawText
-        .replace(/^[^]*?{/, '{')
-        .replace(/}[^]*?$/, '}')
+      text = text
         .replace(/^\/\*O_o\*\//, '')
-        .replace(/^google\.visualization\.Query\.setResponse\s*\(\s*/i, '')
-        .replace(/\s*\)\s*;?\s*$/, '')
+        .replace(/^google\.visualization\.Query\.setResponse\s*\(/i, '')
+        .replace(/\)\s*;?\s*$/, '')
         .trim();
 
-      cleanedText = cleanedText.replace(/,\s*([}\]])/g, '$1');
-
-      console.log(`Cleaned length: ${cleanedText.length} chars`);
-
-      try {
-        parsed = JSON.parse(cleanedText);
-        console.log("Strict parse OK");
-      } catch (e) {
-        console.warn("Strict parse failed:", e.message);
-        parsed = eval(`(${cleanedText})`);
-        console.log("Eval fallback OK");
+      if (text.startsWith('(') && text.endsWith(')')) {
+        text = text.slice(1, -1).trim();
       }
+
+      text = text.replace(/,\s*([}\]])/g, '$1');
+
+      const parsed = JSON.parse(text);
 
       function decodeHtmlEntities(str) {
         const txt = document.createElement("textarea");
@@ -149,12 +137,12 @@
         return txt.value;
       }
 
-      const cols = (parsed?.table?.cols || []).map(col => {
-        const raw = col?.label || col?.id || `col${col?.id || ''}`;
+      const cols = (parsed.table.cols || []).map(col => {
+        const raw = col.label || col.id || `col${col.id || ''}`;
         return decodeHtmlEntities(raw.trim());
       });
 
-      const rows = (parsed?.table?.rows || []).map(r => {
+      const rows = (parsed.table.rows || []).map(r => {
         const obj = {};
         (r.c || []).forEach((cell, i) => {
           if (i < cols.length) obj[cols[i]] = cell?.v ?? null;
@@ -173,26 +161,20 @@
         if (p) personas.push(p);
         if (b) botanicals.push(b);
 
-        const m = Number(row.Min);
-        const M = Number(row.Max);
-        if (!isNaN(m) && min === 10000) min = m;
-        if (!isNaN(M) && max === 99999) max = M;
+        const rowMin = Number(row.Min);
+        const rowMax = Number(row.Max);
+        if (!isNaN(rowMin) && min === 10000) min = rowMin;
+        if (!isNaN(rowMax) && max === 99999) max = rowMax;
       });
 
-      if (!personas.length || !botanicals.length) {
-        console.warn(`Words missing: personas=${personas.length}, botanicals=${botanicals.length}`);
-      }
-
       console.log(`Loaded ${personas.length} personas, ${botanicals.length} botanicals`);
+      console.log(`Range from sheet: ${min} to ${max}`);
 
       return { personas, botanicals, min, max };
 
     } catch (err) {
       console.error("gviz load failed:", err);
-      if (rawText) {
-        console.log("Raw preview:", rawText.substring(0, 500));
-        console.log("Raw end:", rawText.substring(rawText.length - 300));
-      }
+      if (text) console.log("Raw preview:", text.substring(0, 400));
       statusEl.textContent = "Sheet load failed – using fallback";
       statusEl.className = "error";
 
@@ -206,7 +188,7 @@
   }
 
   // ────────────────────────────────────────────────
-  // 2. Generate nickname (must come AFTER load function)
+  // Generate nickname with proper random number
   // ────────────────────────────────────────────────
   async function generateNickname() {
     display.textContent = "Generating...";
@@ -216,28 +198,30 @@
     try {
       const config = await loadNicknameWords();
 
-      console.log(`Range loaded: ${config.min} to ${config.max}`);
-
       const p = config.personas[Math.floor(Math.random() * config.personas.length)];
       const b = config.botanicals[Math.floor(Math.random() * config.botanicals.length)];
+
+      // Correct inclusive random: min to max
       const num = Math.floor(Math.random() * (config.max - config.min + 1)) + config.min;
 
       currentNickname = `${p} ${b} ${num}`;
       display.textContent = currentNickname;
 
+      console.log(`Generated: ${currentNickname} (range ${config.min}–${config.max})`);
+
     } catch (err) {
-      display.textContent = "(failed)";
-      statusEl.textContent = err.message || "Generation error";
+      display.textContent = "(generation failed)";
+      statusEl.textContent = err.message || "Error generating nickname";
       statusEl.className = "error";
     }
   }
 
   // ────────────────────────────────────────────────
-  // 3. Save nickname
+  // Save nickname via POST (no-cors)
   // ────────────────────────────────────────────────
   async function acceptNickname() {
     if (!currentNickname) {
-      statusEl.textContent = "No name yet";
+      statusEl.textContent = "No nickname generated yet";
       statusEl.className = "error";
       return;
     }
@@ -262,22 +246,26 @@
       localStorage.setItem("gg_nickname", currentNickname);
 
       setTimeout(() => {
-        alert(`Welcome, ${currentNickname}!`);
-      }, 1400);
+        alert(`Welcome, ${currentNickname}! Let's start planting.`);
+        // window.location.href = "dashboard.html"; // your next page
+      }, 1600);
 
     } catch (err) {
-      statusEl.textContent = "Save sent – check sheet";
+      statusEl.textContent = "Save request sent – check spreadsheet manually";
       statusEl.className = "error";
+      console.warn("POST send:", err);
     }
   }
 
   // ────────────────────────────────────────────────
-  // Start
+  // Event listeners & start
   // ────────────────────────────────────────────────
   document.getElementById("btn-regenerate")?.addEventListener("click", generateNickname);
   document.getElementById("btn-accept")?.addEventListener("click", acceptNickname);
 
+  // Auto-start
   generateNickname();
 </script>
+
 </body>
 </html>
