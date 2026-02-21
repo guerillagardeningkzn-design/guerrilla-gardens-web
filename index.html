@@ -92,9 +92,9 @@
 </div>
 
 <script>
-  // CONFIG – IMPORTANT: REPLACE WITH YOUR FRESHLY DEPLOYED URL
-  // Old URL gives 404 on POST → must redeploy and use the new one
-  const API_BASE = "https://script.google.com/macros/s/AKfycbzTLEZjy5G5Xs9Vs5hS9QzWHlfMJTF5yF0Q-wCLYmPW6un0UAVHCnzx0Icu5ZMfF5K/exec"; // ← CHANGE THIS
+  // CONFIG – all constants defined here
+  const SHEET_ID = "1syH1gj9L-HHC3dlGoO-RTUthIXsEeUYC_81jlAvHfsg";
+  const API_BASE = "https://script.google.com/macros/s/AKfycbzTLEZjy5G5Xs9Vs5hS9QzWHlfMJTF5yF0Q-wCLYmPW6un0UAVHCnzx0Icu5ZMfF5K/exec";
 
   let currentNickname = "";
 
@@ -102,94 +102,82 @@
   const statusEl = document.getElementById("status");
 
   // ────────────────────────────────────────────────
-  // Load word lists from sheet – exact working version
+  // Load word lists from sheet – exact working stripping
   // ────────────────────────────────────────────────
   async function loadNicknameWords() {
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=NameCreationSettings`;
-  let rawText = '';
-  let text = '';
+    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=NameCreationSettings`;
+    let text = '';
 
-  try {
-    statusEl.textContent = "Loading word lists...";
-    statusEl.className = '';
+    try {
+      statusEl.textContent = "Loading word lists...";
+      statusEl.className = '';
 
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`gviz fetch: ${res.status}`);
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`gviz fetch: ${res.status}`);
 
-    rawText = await res.text();
+      text = await res.text();
 
-    // Stripping – matches your preview exactly (no space before '(')
-    text = rawText
-      .replace(/^\/\*O_o\*\//, '')
-      .replace(/^google\.visualization\.Query\.setResponse\(/i, '')
-      .replace(/\)\s*;?\s*$/, '')
-      .trim();
+      // Stripping – this is the version that previously succeeded
+      text = text
+        .replace(/^\/\*O_o\*\//, '')
+        .replace(/^google\.visualization\.Query\.setResponse\s*\(/i, '')
+        .replace(/\)\s*;?\s*$/, '')
+        .trim();
 
-    // Fix trailing commas
-    text = text.replace(/,\s*([}\]])/g, '$1');
+      if (text.startsWith('(') && text.endsWith(')')) {
+        text = text.slice(1, -1).trim();
+      }
 
-    console.log(`Cleaned length: ${text.length} chars`);
+      text = text.replace(/,\s*([}\]])/g, '$1');
 
-    const parsed = JSON.parse(text);
+      const parsed = JSON.parse(text);
 
-    function decodeHtmlEntities(str) {
-      const txt = document.createElement("textarea");
-      txt.innerHTML = str;
-      return txt.value;
-    }
+      function decodeHtmlEntities(str) {
+        const txt = document.createElement("textarea");
+        txt.innerHTML = str;
+        return txt.value;
+      }
 
-    const cols = (parsed.table.cols || []).map(col => {
-      const raw = col.label || col.id || `col${col.id || ''}`;
-      return decodeHtmlEntities(raw.trim());
-    });
-
-    const rows = (parsed.table.rows || []).map(r => {
-      const obj = {};
-      (r.c || []).forEach((cell, i) => {
-        if (i < cols.length) obj[cols[i]] = cell?.v ?? null;
+      const cols = (parsed.table.cols || []).map(col => {
+        const raw = col.label || col.id || `col${col.id || ''}`;
+        return decodeHtmlEntities(raw.trim());
       });
-      return obj;
-    });
 
-    const personas = [];
-    const botanicals = [];
-    let min = 10000;
-    let max = 99999;
+      const rows = (parsed.table.rows || []).map(r => {
+        const obj = {};
+        (r.c || []).forEach((cell, i) => {
+          if (i < cols.length) obj[cols[i]] = cell?.v ?? null;
+        });
+        return obj;
+      });
 
-    rows.forEach(row => {
-      const p = row["Action & Persona"]?.toString()?.trim();
-      const b = row["Botanical & Earth"]?.toString()?.trim();
-      if (p) personas.push(p);
-      if (b) botanicals.push(b);
+      const personas = [];
+      const botanicals = [];
 
-      const rowMin = Number(row.Min);
-      const rowMax = Number(row.Max);
-      if (!isNaN(rowMin) && min === 10000) min = rowMin;
-      if (!isNaN(rowMax) && max === 99999) max = rowMax;
-    });
+      rows.forEach(row => {
+        const p = row["Action & Persona"]?.toString()?.trim();
+        const b = row["Botanical & Earth"]?.toString()?.trim();
+        if (p) personas.push(p);
+        if (b) botanicals.push(b);
+      });
 
-    console.log(`Loaded ${personas.length} personas and ${botanicals.length} Botanicals`);
-    console.log(`Range loaded from sheet: ${min} to ${max}`);
+      return { personas, botanicals };
 
-    return { personas, botanicals, min, max };
+    } catch (err) {
+      console.error("gviz load failed:", err);
+      if (text) console.log("Raw preview:", text.substring(0, 400));
+      statusEl.textContent = "Sheet load failed – using fallback";
+      statusEl.className = "error";
 
-  } catch (err) {
-    console.error("gviz load failed:", err);
-    if (rawText) console.log("Raw preview:", rawText.substring(0, 400));
-    statusEl.textContent = "Sheet load failed – using fallback";
-    statusEl.className = "error";
-
-    return {
-      personas: ["Grand", "Shadow", "Wild", "Secret", "Silent", "Mystic", "Rogue", "Hidden"],
-      botanicals: ["Basil", "Leaf", "Root", "Bloom", "Thorn", "Moss", "Fern", "Petal"],
-      min: 10000,
-      max: 99999
-    };
+      return {
+        personas: ["Grand", "Shadow", "Wild", "Secret", "Silent", "Mystic", "Rogue", "Hidden"],
+        botanicals: ["Basil", "Leaf", "Root", "Bloom", "Thorn", "Moss", "Fern", "Petal"]
+      };
+    }
   }
-}
 
   // ────────────────────────────────────────────────
-  // Generate nickname – client-side random 5-digit number
+  // Generate nickname – random 5-digit number client-side
   // ────────────────────────────────────────────────
   async function generateNickname() {
     display.textContent = "Generating...";
@@ -215,7 +203,7 @@
   }
 
   // ────────────────────────────────────────────────
-  // Save chosen nickname via POST (no-cors) – debug logging added
+  // Save chosen nickname via POST (no-cors)
   // ────────────────────────────────────────────────
   async function acceptNickname() {
     if (!currentNickname) {
@@ -227,14 +215,10 @@
     statusEl.textContent = "Saving...";
     statusEl.className = "";
 
-    console.log("Sending POST to:", API_BASE);
-    console.log("Payload:", JSON.stringify({ action: "set_nickname", nickname: currentNickname }));
-
     try {
-      const response = await fetch(API_BASE, {
+      await fetch(API_BASE, {
         method: "POST",
         mode: "no-cors",
-        cache: "no-cache",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "set_nickname",
@@ -242,9 +226,7 @@
         })
       });
 
-      // With no-cors we cannot read response.status, but we can log that the request was attempted
-      console.log("POST request sent (no-cors mode – check sheet manually for update)");
-      statusEl.textContent = `Save request sent: ${currentNickname} ✓ (check sheet)`;
+      statusEl.textContent = `Saved: ${currentNickname} ✓`;
       statusEl.className = "success";
 
       localStorage.setItem("gg_nickname", currentNickname);
@@ -254,8 +236,7 @@
       }, 1600);
 
     } catch (err) {
-      console.error("POST failed:", err);
-      statusEl.textContent = "Save failed – see console";
+      statusEl.textContent = "Save sent – check sheet";
       statusEl.className = "error";
     }
   }
