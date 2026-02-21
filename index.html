@@ -6,7 +6,7 @@
   <title>Guerrilla Gardens – Nickname Setup</title>
   <style>
     body {
-      font-family: system-ui, sans-serif;
+      font-family: system-ui, -apple-system, sans-serif;
       background: #f5f8f5;
       color: #1a3c1a;
       margin: 0;
@@ -21,7 +21,10 @@
       border-radius: 16px;
       box-shadow: 0 4px 24px rgba(0,0,0,0.08);
     }
-    h1, h2 { color: #2e7d32; text-align: center; }
+    h1, h2 {
+      color: #2e7d32;
+      text-align: center;
+    }
     #nickname-display {
       font-size: 2.6rem;
       font-weight: bold;
@@ -90,7 +93,7 @@
 
 <script>
   // ────────────────────────────────────────────────
-  // CONFIG – change only these values
+  // CONFIG – change these if needed
   // ────────────────────────────────────────────────
   const SHEET_ID = "1syH1gj9L-HHC3dlGoO-RTUthIXsEeUYC_81jlAvHfsg";
   const API_BASE = "https://script.google.com/macros/s/AKfycbzTLEZjy5G5Xs9Vs5hS9QzWHlfMJTF5yF0Q-wCLYmPW6un0UAVHCnzx0Icu5ZMfF5K/exec";
@@ -101,41 +104,123 @@
   const statusEl = document.getElementById("status");
 
   // ────────────────────────────────────────────────
-  // Fetch word lists from NameCreationSettings via public gviz endpoint
+  // Load nickname word lists from sheet via public gviz endpoint
   // ────────────────────────────────────────────────
-// Inside loadNicknameWords(), after parsing the JSON:
+  async function loadNicknameWords() {
+    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=NameCreationSettings`;
+    let text = '';
+    let parsed = null;
 
-// Helper to decode HTML entities like &amp; → &
-function decodeHtmlEntities(str) {
-  const txt = document.createElement("textarea");
-  txt.innerHTML = str;
-  return txt.value;
-}
+    try {
+      statusEl.textContent = "Loading word lists from sheet...";
+      statusEl.className = "";
 
-// Then, when mapping columns:
-const cols = (parsed.table?.cols || []).map(col => {
-  const rawLabel = col.label || col.id || `col${col.id || ''}`;
-  return decodeHtmlEntities(rawLabel.trim());
-});
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error(`gviz fetch failed → HTTP ${res.status} ${res.statusText}`);
+      }
 
-// Now the rest stays the same:
-const personas = [];
-const botanicals = [];
-let min = 10000;
-let max = 99999;
+      text = await res.text();
+      console.log(`gviz raw response length: ${text.length} chars`);
 
-rows.forEach(row => {
-  // Use the decoded label
-  const p = row["Action & Persona"]?.toString()?.trim();
-  const b = row["Botanical & Earth"]?.toString()?.trim();
-  if (p) personas.push(p);
-  if (b) botanicals.push(b);
+      // Strip wrapper (tolerant)
+      text = text
+        .replace(/^[^]*?{/, '{')
+        .replace(/}[^]*?$/, '}')
+        .replace(/^\/\*O_o\*\//, '')
+        .replace(/^google\.visualization\.Query\.setResponse\s*\(\s*/i, '')
+        .replace(/\s*\)\s*;?\s*$/, '')
+        .trim();
 
-  const rowMin = Number(row.Min);
-  const rowMax = Number(row.Max);
-  if (!isNaN(rowMin) && min === 10000) min = rowMin;
-  if (!isNaN(rowMax) && max === 99999) max = rowMax;
-});
+      // Fix trailing commas (very common in gviz)
+      text = text.replace(/,\s*([}\]])/g, '$1');
+
+      // Parse safely
+      try {
+        parsed = JSON.parse(text);
+      } catch (parseErr) {
+        console.error("JSON.parse failed:", parseErr.message);
+        console.log("Failed text preview (first 500 chars):", text.substring(0, 500));
+        console.log("Failed text end (last 300 chars):", text.substring(text.length - 300));
+        throw new Error(`JSON parse error: ${parseErr.message}`);
+      }
+
+      // ────────────────────────────────────────────────
+      // Decode HTML entities in column labels (e.g. &amp; → &)
+      // ────────────────────────────────────────────────
+      function decodeHtmlEntities(str) {
+        const txt = document.createElement("textarea");
+        txt.innerHTML = str;
+        return txt.value;
+      }
+
+      const cols = (parsed?.table?.cols || []).map(col => {
+        const raw = col?.label || col?.id || `col${col?.id || ''}`;
+        return decodeHtmlEntities(raw.trim());
+      });
+
+      const rows = (parsed?.table?.rows || []).map(r => {
+        const obj = {};
+        (r.c || []).forEach((cell, i) => {
+          if (i < cols.length) {
+            obj[cols[i]] = cell?.v ?? null;
+          }
+        });
+        return obj;
+      });
+
+      // ────────────────────────────────────────────────
+      // Build config using decoded keys
+      // ────────────────────────────────────────────────
+      const personas = [];
+      const botanicals = [];
+      let min = 10000;
+      let max = 99999;
+
+      rows.forEach(row => {
+        const p = row["Action & Persona"]?.toString()?.trim();
+        const b = row["Botanical & Earth"]?.toString()?.trim();
+        if (p) personas.push(p);
+        if (b) botanicals.push(b);
+
+        const rowMin = Number(row.Min);
+        const rowMax = Number(row.Max);
+        if (!isNaN(rowMin) && min === 10000) min = rowMin;
+        if (!isNaN(rowMax) && max === 99999) max = rowMax;
+      });
+
+      if (personas.length === 0 || botanicals.length === 0) {
+        throw new Error(`No words found. Personas: ${personas.length}, Botanicals: ${botanicals.length}`);
+      }
+
+      if (min >= max) {
+        throw new Error(`Invalid range: min=${min}, max=${max}`);
+      }
+
+      console.log(`Success → ${personas.length} personas, ${botanicals.length} botanicals loaded`);
+
+      return { personas, botanicals, min, max };
+
+    } catch (err) {
+      console.error("gviz load failed:", err);
+      if (text.length > 0) {
+        console.log("Raw response preview (first 500 chars):", text.substring(0, 500));
+        console.log("Raw response end (last 300 chars):", text.substring(text.length - 300));
+      } else {
+        console.log("No response text received (fetch likely failed early)");
+      }
+
+      statusEl.textContent = "Could not load word lists – using fallback words";
+      statusEl.className = "error";
+
+      return {
+        personas: ["Grand", "Shadow", "Wild", "Secret", "Silent", "Mystic", "Rogue", "Hidden", "Fierce", "Swift"],
+        botanicals: ["Basil", "Leaf", "Root", "Bloom", "Thorn", "Moss", "Fern", "Petal", "Vine", "Sprout"],
+        min: 10000,
+        max: 99999
+      };
+    }
+  }
 
   // ────────────────────────────────────────────────
   // Generate nickname client-side from loaded words
@@ -187,7 +272,6 @@ rows.forEach(row => {
         })
       });
 
-      // Assume success (no-cors hides response)
       statusEl.textContent = `Saved: ${currentNickname} ✓`;
       statusEl.className = "success";
 
@@ -195,7 +279,7 @@ rows.forEach(row => {
 
       setTimeout(() => {
         alert(`Welcome, ${currentNickname}! Let's start planting.`);
-        // window.location.href = "dashboard.html"; // or your next page
+        // window.location.href = "dashboard.html"; // ← change to your next page
       }, 1600);
 
     } catch (err) {
@@ -206,12 +290,12 @@ rows.forEach(row => {
   }
 
   // ────────────────────────────────────────────────
-  // Wire up buttons & start
+  // Event listeners & start
   // ────────────────────────────────────────────────
   document.getElementById("btn-regenerate").addEventListener("click", generateNickname);
   document.getElementById("btn-accept").addEventListener("click", acceptNickname);
 
-  // Initial generation
+  // Auto-generate on load
   generateNickname();
 </script>
 
