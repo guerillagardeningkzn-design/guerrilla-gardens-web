@@ -102,156 +102,102 @@
   const statusEl = document.getElementById("status");
 
   // ────────────────────────────────────────────────
-  // Load word lists + min/max from sheet (gviz endpoint)
+  // Load word lists + min/max from sheet via gviz
   // ────────────────────────────────────────────────
   async function loadNicknameWords() {
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=NameCreationSettings`;
-  let rawText = '';
-  let cleanedText = '';
-  let parsed = null;
+    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=NameCreationSettings`;
+    let rawText = '';
 
-  try {
-    statusEl.textContent = "Loading word lists...";
-    statusEl.className = '';
-
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`gviz fetch failed → HTTP ${res.status} ${res.statusText}`);
-    }
-
-    rawText = await res.text();
-    console.log(`Raw gviz response length: ${rawText.length} chars`);
-
-    // ────────────────────────────────────────────────
-    // Stripping – more robust against variations
-    // ────────────────────────────────────────────────
-    cleanedText = rawText;
-
-    // 1. Remove leading comment if present
-    cleanedText = cleanedText.replace(/^\/\*O_o\*\//, '');
-
-    // 2. Remove the function call prefix (very tolerant)
-    cleanedText = cleanedText.replace(/google\.visualization\.Query\.setResponse\s*\(/i, '');
-
-    // 3. Remove trailing ) ; and whitespace
-    cleanedText = cleanedText.replace(/\)\s*;?\s*$/, '');
-
-    // 4. Remove any extra outer parentheses
-    if (cleanedText.startsWith('(') && cleanedText.endsWith(')')) {
-      cleanedText = cleanedText.slice(1, -1).trim();
-    }
-
-    // 5. Final trim
-    cleanedText = cleanedText.trim();
-
-    // 6. Fix trailing commas (Google bug)
-    cleanedText = cleanedText.replace(/,\s*([}\]])/g, '$1');
-
-    console.log(`Cleaned length: ${cleanedText.length} chars`);
-
-    // ────────────────────────────────────────────────
-    // Parse – first try standard JSON.parse
-    // ────────────────────────────────────────────────
     try {
-      parsed = JSON.parse(cleanedText);
-      console.log("Strict JSON.parse succeeded");
-    } catch (strictErr) {
-      console.warn("Strict parse failed:", strictErr.message);
-      // Last resort fallback: eval (safe for trusted Google response)
-      try {
-        parsed = eval(`(${cleanedText})`);
-        console.log("Eval fallback parse succeeded");
-      } catch (evalErr) {
-        console.error("Eval fallback also failed:", evalErr);
-        throw new Error("JSON parse failed even after cleanup");
+      statusEl.textContent = "Loading word lists...";
+      statusEl.className = '';
+
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`gviz fetch: ${res.status}`);
+
+      rawText = await res.text();
+
+      // Stripping – keep this exactly as it is now (working)
+      let text = rawText
+        .replace(/^\/\*O_o\*\//, '')
+        .replace(/^google\.visualization\.Query\.setResponse\s*\(/i, '')
+        .replace(/\)\s*;?\s*$/, '')
+        .trim();
+
+      if (text.startsWith('(') && text.endsWith(')')) {
+        text = text.slice(1, -1).trim();
       }
-    }
 
-    // Safety check
-    if (!parsed || !parsed.table) {
-      throw new Error("Parsed response missing 'table' object");
-    }
+      text = text.replace(/,\s*([}\]])/g, '$1');
 
-    // ────────────────────────────────────────────────
-    // Decode HTML entities in column labels (e.g. &amp; → &)
-    // ────────────────────────────────────────────────
-    function decodeHtmlEntities(str) {
-      const txt = document.createElement("textarea");
-      txt.innerHTML = str;
-      return txt.value;
-    }
+      const parsed = JSON.parse(text);
 
-    const cols = (parsed.table.cols || []).map(col => {
-      const raw = col.label || col.id || `col${col.id || ''}`;
-      return decodeHtmlEntities(raw.trim());
-    });
+      function decodeHtmlEntities(str) {
+        const txt = document.createElement("textarea");
+        txt.innerHTML = str;
+        return txt.value;
+      }
 
-    const rows = (parsed.table.rows || []).map(r => {
-      const obj = {};
-      (r.c || []).forEach((cell, i) => {
-        if (i < cols.length) {
-          obj[cols[i]] = cell?.v ?? null;
-        }
+      const cols = (parsed.table.cols || []).map(col => {
+        const raw = col.label || col.id || `col${col.id || ''}`;
+        return decodeHtmlEntities(raw.trim());
       });
-      return obj;
-    });
 
-    // ────────────────────────────────────────────────
-    // Build nickname config – extract words + range
-    // ────────────────────────────────────────────────
-    const personas = [];
-    const botanicals = [];
-    let min = 10000;
-    let max = 99999;
+      const rows = (parsed.table.rows || []).map(r => {
+        const obj = {};
+        (r.c || []).forEach((cell, i) => {
+          if (i < cols.length) obj[cols[i]] = cell?.v ?? null;
+        });
+        return obj;
+      });
 
-    rows.forEach(row => {
-      const persona = row["Action & Persona"]?.toString()?.trim();
-      const botanical = row["Botanical & Earth"]?.toString()?.trim();
-      if (persona) personas.push(persona);
-      if (botanical) botanicals.push(botanical);
+      const personas = [];
+      const botanicals = [];
+      let min = 10000;
+      let max = 99999;
 
-      const rowMin = Number(row.Min);
-      const rowMax = Number(row.Max);
-      if (!isNaN(rowMin) && min === 10000) min = rowMin;
-      if (!isNaN(rowMax) && max === 99999) max = rowMax;
-    });
+      rows.forEach(row => {
+        const p = row["Action & Persona"]?.toString()?.trim();
+        const b = row["Botanical & Earth"]?.toString()?.trim();
+        if (p) personas.push(p);
+        if (b) botanicals.push(b);
 
-    if (personas.length === 0 || botanicals.length === 0) {
-      console.warn(`No words found – personas: ${personas.length}, botanicals: ${botanicals.length}`);
+        // More robust min/max detection – try multiple key variations
+        const minVal = Number(row.Min ?? row.min ?? row["Min"] ?? row["min"]);
+        const maxVal = Number(row.Max ?? row.max ?? row["Max"] ?? row["max"]);
+        if (!isNaN(minVal) && min === 10000) min = minVal;
+        if (!isNaN(maxVal) && max === 99999) max = maxVal;
+      });
+
+      if (personas.length === 0 || botanicals.length === 0) {
+        throw new Error(`No words found (personas: ${personas.length}, botanicals: ${botanicals.length})`);
+      }
+
+      // Safety fallback for range
+      if (min >= max || min === 0 || max === 0) {
+        min = 10000;
+        max = 99999;
+      }
+
+      return { personas, botanicals, min, max };
+
+    } catch (err) {
+      console.error("gviz load failed:", err);
+      if (rawText) console.log("Raw preview:", rawText.substring(0, 400));
+      statusEl.textContent = "Sheet load failed – using fallback";
+      statusEl.className = "error";
+
+      return {
+        personas: ["Grand", "Shadow", "Wild", "Secret", "Silent", "Mystic", "Rogue", "Hidden"],
+        botanicals: ["Basil", "Leaf", "Root", "Bloom", "Thorn", "Moss", "Fern", "Petal"],
+        min: 10000,
+        max: 99999
+      };
     }
-
-    console.log(`Loaded ${personas.length} personas and ${botanicals.length} botanicals`);
-    console.log(`Range loaded from sheet: ${min} to ${max}`);
-
-    return { personas, botanicals, min, max };
-
-  } catch (err) {
-    console.error("gviz load failed:", err);
-
-    if (rawText.length > 0) {
-      console.log("Raw response preview (first 600 chars):");
-      console.log(rawText.substring(0, 600));
-      console.log("Raw response end (last 400 chars):");
-      console.log(rawText.substring(rawText.length - 400));
-    }
-    if (cleanedText.length > 0) {
-      console.log("Cleaned text preview (first 400 chars):");
-      console.log(cleanedText.substring(0, 400));
-    }
-
-    statusEl.textContent = "Could not load word lists – using fallback words";
-    statusEl.className = "error";
-
-    return {
-      personas: ["Grand", "Shadow", "Wild", "Secret", "Silent", "Mystic", "Rogue", "Hidden", "Fierce", "Swift"],
-      botanicals: ["Basil", "Leaf", "Root", "Bloom", "Thorn", "Moss", "Fern", "Petal", "Vine", "Sprout"],
-      min: 10000,
-      max: 99999
-    };
   }
-}
+
   // ────────────────────────────────────────────────
-  // Generate nickname with proper random number
+  // Generate nickname – now with correct number
   // ────────────────────────────────────────────────
   async function generateNickname() {
     display.textContent = "Generating...";
@@ -264,13 +210,11 @@
       const p = config.personas[Math.floor(Math.random() * config.personas.length)];
       const b = config.botanicals[Math.floor(Math.random() * config.botanicals.length)];
 
-      // Correct inclusive random: min to max
+      // Correct inclusive random number from sheet range
       const num = Math.floor(Math.random() * (config.max - config.min + 1)) + config.min;
 
       currentNickname = `${p} ${b} ${num}`;
       display.textContent = currentNickname;
-
-      console.log(`Generated: ${currentNickname} (range ${config.min}–${config.max})`);
 
     } catch (err) {
       display.textContent = "(generation failed)";
@@ -280,7 +224,7 @@
   }
 
   // ────────────────────────────────────────────────
-  // Save nickname via POST (no-cors)
+  // Save chosen nickname via POST (no-cors)
   // ────────────────────────────────────────────────
   async function acceptNickname() {
     if (!currentNickname) {
@@ -310,23 +254,20 @@
 
       setTimeout(() => {
         alert(`Welcome, ${currentNickname}! Let's start planting.`);
-        // window.location.href = "dashboard.html"; // your next page
       }, 1600);
 
     } catch (err) {
       statusEl.textContent = "Save request sent – check spreadsheet manually";
       statusEl.className = "error";
-      console.warn("POST send:", err);
     }
   }
 
   // ────────────────────────────────────────────────
-  // Event listeners & start
+  // Event listeners & auto-start
   // ────────────────────────────────────────────────
   document.getElementById("btn-regenerate")?.addEventListener("click", generateNickname);
   document.getElementById("btn-accept")?.addEventListener("click", acceptNickname);
 
-  // Auto-start
   generateNickname();
 </script>
 
