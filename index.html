@@ -105,11 +105,11 @@
   // ────────────────────────────────────────────────
 async function loadNicknameWords() {
   const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=NameCreationSettings`;
-  let text = '';   // declare here so it's always defined, even in catch
+  let text = '';
 
   try {
     statusEl.textContent = "Loading word lists from sheet...";
-    
+
     const res = await fetch(url);
     if (!res.ok) {
       throw new Error(`gviz fetch failed → HTTP ${res.status} ${res.statusText}`);
@@ -117,36 +117,52 @@ async function loadNicknameWords() {
 
     text = await res.text();
 
-    // Log raw response length for debugging
     console.log(`gviz raw response length: ${text.length} chars`);
 
-    // Strip wrapper (very tolerant version)
+    // Step 1: Aggressive prefix/suffix stripping
     text = text
-      .replace(/^[^]*?{/, '{')               // everything before first {
-      .replace(/}[^]*?$/, '}')               // everything after last }
+      .replace(/^[^]*?{/, '{')                     // remove everything before first {
+      .replace(/}[^]*?$/, '}')                     // remove everything after last }
       .replace(/^\/\*O_o\*\//, '')
       .replace(/^google\.visualization\.Query\.setResponse\s*\(\s*/i, '')
       .replace(/\s*\)\s*;?\s*$/, '')
       .trim();
 
-    // Safety check before parse
-    if (!text.startsWith('{')) {
-      throw new Error(`Stripped text does not start with '{' → likely still wrapped\nPreview: ${text.substring(0, 150)}`);
+    // Step 2: Fix common Google JSON malformations
+    // Remove trailing commas in arrays/objects (invalid JSON)
+    text = text.replace(/,\s*([\]}])/g, '$1');
+
+    // Step 3: Try parsing
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (parseErr) {
+      // Last resort: log exact position of failure
+      console.log("Parse failed at position:", parseErr.message);
+      console.log("Text around failure:", text.substring(0, 200));
+      throw parseErr;
     }
 
-    const parsed = JSON.parse(text);
+    // ────────────────────────────────────────────────
+    // Extract columns and rows (defensive)
+    // ────────────────────────────────────────────────
+    const cols = (parsed.table?.cols || []).map((col, idx) => 
+      (col?.label || col?.id || `col${idx}`).trim()
+    );
 
-    // Extract columns & rows
-    const cols = parsed.table.cols.map(col => col.label?.trim() || col.id || `col${col.id || ''}`);
-    const rows = parsed.table.rows.map(r => {
+    const rows = (parsed.table?.rows || []).map(r => {
       const obj = {};
-      r.c.forEach((cell, i) => {
-        obj[cols[i]] = cell?.v ?? null;
+      (r.c || []).forEach((cell, i) => {
+        if (i < cols.length) {
+          obj[cols[i]] = cell?.v ?? null;
+        }
       });
       return obj;
     });
 
-    // Build config
+    // ────────────────────────────────────────────────
+    // Build nickname config
+    // ────────────────────────────────────────────────
     const personas = [];
     const botanicals = [];
     let min = 10000;
@@ -164,34 +180,35 @@ async function loadNicknameWords() {
       if (!isNaN(rowMax) && max === 99999) max = rowMax;
     });
 
-    if (!personas.length || !botanicals.length) {
-      throw new Error("No valid persona/botanical words found in sheet");
+    if (personas.length === 0 || botanicals.length === 0) {
+      throw new Error(`No words found. Personas: ${personas.length}, Botanicals: ${botanicals.length}`);
     }
 
     if (min >= max) {
-      throw new Error("Invalid min/max range in sheet");
+      throw new Error(`Invalid range: min=${min}, max=${max}`);
     }
 
-    console.log(`Loaded ${personas.length} personas and ${botanicals.length} botanicals`);
+    console.log(`Success: ${personas.length} personas, ${botanicals.length} botanicals loaded`);
 
     return { personas, botanicals, min, max };
 
   } catch (err) {
     console.error("gviz load failed:", err);
     if (text.length > 0) {
-      console.log("Raw response preview (first 300 chars):");
-      console.log(text.substring(0, 300));
+      console.log("Raw response preview (first 400 chars):");
+      console.log(text.substring(0, 400));
+      console.log("Last 200 chars of response:");
+      console.log(text.substring(text.length - 200));
     } else {
-      console.log("No response text received (fetch likely failed early)");
+      console.log("No response text received (fetch likely failed)");
     }
 
-    statusEl.textContent = "Could not load word lists from sheet – using fallback words";
+    statusEl.textContent = "Could not load word lists – using fallback words";
     statusEl.className = "error";
 
-    // Fallback words if sheet is unreachable or parsing fails
     return {
       personas: ["Grand", "Shadow", "Wild", "Secret", "Silent", "Mystic", "Rogue", "Hidden", "Fierce", "Swift"],
-      botanicals: ["Basil", "Leaf", "Root", "Bloom", "Thorn", "Moss", "Fern", "Petal", "Vine", "Sprout"],
+      botanicals: ["Basil", "Leaf", "Root", "Bloom", "Thorn", "Moss", "Fern", "Petal", "Vine", "Sprout", "Twig"],
       min: 10000,
       max: 99999
     };
