@@ -1,254 +1,75 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Guerrilla Gardens – Nickname Setup</title>
-  <style>
-    body {
-      font-family: system-ui, -apple-system, sans-serif;
-      background: #f5f8f5;
-      color: #1a3c1a;
-      margin: 0;
-      padding: 20px;
-      line-height: 1.6;
+// Checkpoint 1 – Confirmed working pattern (Feb 21, 2026)
+
+// 1. Reading from sheets (client-side, no CORS pain)
+const SHEET_ID = "1syH1gj9L-HHC3dlGoO-RTUthIXsEeUYC_81jlAvHfsg";
+
+async function fetchSheetData(tabName) {
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(tabName)}`;
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`gviz fetch: ${res.status}`);
+
+    let text = await res.text();
+
+    // Stripping – this exact sequence worked (5460 chars cleaned, parse succeeded)
+    text = text
+      .replace(/^\/\*O_o\*\//, '')
+      .replace(/^google\.visualization\.Query\.setResponse\s*\(/i, '')
+      .replace(/\)\s*;?\s*$/, '')
+      .trim();
+
+    if (text.startsWith('(') && text.endsWith(')')) {
+      text = text.slice(1, -1).trim();
     }
-    .container {
-      max-width: 540px;
-      margin: 0 auto;
-      background: white;
-      padding: 2rem;
-      border-radius: 16px;
-      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+
+    text = text.replace(/,\s*([}\]])/g, '$1');
+
+    const parsed = JSON.parse(text);
+
+    function decodeHtmlEntities(str) {
+      const txt = document.createElement("textarea");
+      txt.innerHTML = str;
+      return txt.value;
     }
-    h1, h2 {
-      color: #2e7d32;
-      text-align: center;
-    }
-    #nickname-display {
-      font-size: 2.6rem;
-      font-weight: bold;
-      color: #1b5e20;
-      background: #e8f5e9;
-      padding: 1.5rem;
-      border-radius: 12px;
-      text-align: center;
-      margin: 2rem 0;
-      min-height: 110px;
-      word-break: break-word;
-      line-height: 1.3;
-    }
-    .buttons {
-      display: flex;
-      gap: 1.2rem;
-      justify-content: center;
-      flex-wrap: wrap;
-      margin: 2rem 0;
-    }
-    button {
-      padding: 1rem 2.2rem;
-      font-size: 1.15rem;
-      border-radius: 10px;
-      cursor: pointer;
-      border: none;
-      transition: all 0.18s;
-    }
-    #btn-regenerate {
-      background: #81c784;
-      color: #1b3a1b;
-    }
-    #btn-accept {
-      background: #388e3c;
-      color: white;
-    }
-    button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    }
-    #status {
-      text-align: center;
-      font-size: 1.15rem;
-      min-height: 2em;
-      margin-top: 1.5rem;
-    }
-    .success { color: #2e7d32; font-weight: 500; }
-    .error   { color: #c62828; }
-  </style>
-</head>
-<body>
 
-<div class="container">
-  <h1>Guerrilla Gardens</h1>
-  <h2>Choose Your Guerrilla Nickname</h2>
+    const cols = (parsed.table.cols || []).map(col => {
+      const raw = col.label || col.id || `col${col.id || ''}`;
+      return decodeHtmlEntities(raw.trim());
+    });
 
-  <div id="nickname-display">Loading your nickname suggestion...</div>
-
-  <div class="buttons">
-    <button id="btn-regenerate">Regenerate</button>
-    <button id="btn-accept">Accept this name</button>
-  </div>
-
-  <div id="status"></div>
-</div>
-
-<script>
-  // CONFIG – all constants defined here
-  const SHEET_ID = "1syH1gj9L-HHC3dlGoO-RTUthIXsEeUYC_81jlAvHfsg";
-  const API_BASE = "https://script.google.com/macros/s/AKfycbzTLEZjy5G5Xs9Vs5hS9QzWHlfMJTF5yF0Q-wCLYmPW6un0UAVHCnzx0Icu5ZMfF5K/exec";
-
-  let currentNickname = "";
-
-  const display = document.getElementById("nickname-display");
-  const statusEl = document.getElementById("status");
-
-  // ────────────────────────────────────────────────
-  // Load word lists from sheet – exact working stripping
-  // ────────────────────────────────────────────────
-  async function loadNicknameWords() {
-    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=NameCreationSettings`;
-    let text = '';
-
-    try {
-      statusEl.textContent = "Loading word lists...";
-      statusEl.className = '';
-
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`gviz fetch: ${res.status}`);
-
-      text = await res.text();
-
-      // Stripping – this is the version that previously succeeded
-      text = text
-        .replace(/^\/\*O_o\*\//, '')
-        .replace(/^google\.visualization\.Query\.setResponse\s*\(/i, '')
-        .replace(/\)\s*;?\s*$/, '')
-        .trim();
-
-      if (text.startsWith('(') && text.endsWith(')')) {
-        text = text.slice(1, -1).trim();
-      }
-
-      text = text.replace(/,\s*([}\]])/g, '$1');
-
-      const parsed = JSON.parse(text);
-
-      function decodeHtmlEntities(str) {
-        const txt = document.createElement("textarea");
-        txt.innerHTML = str;
-        return txt.value;
-      }
-
-      const cols = (parsed.table.cols || []).map(col => {
-        const raw = col.label || col.id || `col${col.id || ''}`;
-        return decodeHtmlEntities(raw.trim());
+    const rows = (parsed.table.rows || []).map(r => {
+      const obj = {};
+      (r.c || []).forEach((cell, i) => {
+        if (i < cols.length) obj[cols[i]] = cell?.v ?? null;
       });
+      return obj;
+    });
 
-      const rows = (parsed.table.rows || []).map(r => {
-        const obj = {};
-        (r.c || []).forEach((cell, i) => {
-          if (i < cols.length) obj[cols[i]] = cell?.v ?? null;
-        });
-        return obj;
-      });
+    return { success: true, columns: cols, rows };
 
-      const personas = [];
-      const botanicals = [];
-
-      rows.forEach(row => {
-        const p = row["Action & Persona"]?.toString()?.trim();
-        const b = row["Botanical & Earth"]?.toString()?.trim();
-        if (p) personas.push(p);
-        if (b) botanicals.push(b);
-      });
-
-      return { personas, botanicals };
-
-    } catch (err) {
-      console.error("gviz load failed:", err);
-      if (text) console.log("Raw preview:", text.substring(0, 400));
-      statusEl.textContent = "Sheet load failed – using fallback";
-      statusEl.className = "error";
-
-      return {
-        personas: ["Grand", "Shadow", "Wild", "Secret", "Silent", "Mystic", "Rogue", "Hidden"],
-        botanicals: ["Basil", "Leaf", "Root", "Bloom", "Thorn", "Moss", "Fern", "Petal"]
-      };
-    }
+  } catch (err) {
+    console.error("gviz read failed:", err);
+    return { success: false, error: err.message };
   }
+}
 
-  // ────────────────────────────────────────────────
-  // Generate nickname – random 5-digit number client-side
-  // ────────────────────────────────────────────────
-  async function generateNickname() {
-    display.textContent = "Generating...";
-    statusEl.textContent = "";
-    statusEl.className = "";
+// 2. Writing / updating (server-side via Apps Script POST + no-cors)
+const API_BASE = "https://script.google.com/macros/s/AKfycbzTLEZjy5G5Xs9Vs5hS9QzWHlfMJTF5yF0Q-wCLYmPW6un0UAVHCnzx0Icu5ZMfF5K/exec";
 
-    try {
-      const config = await loadNicknameWords();
-
-      const p = config.personas[Math.floor(Math.random() * config.personas.length)];
-      const b = config.botanicals[Math.floor(Math.random() * config.botanicals.length)];
-
-      const num = Math.floor(10000 + Math.random() * 90000);
-
-      currentNickname = `${p} ${b} ${num}`;
-      display.textContent = currentNickname;
-
-    } catch (err) {
-      display.textContent = "(generation failed)";
-      statusEl.textContent = err.message || "Error generating nickname";
-      statusEl.className = "error";
-    }
+async function sendToSheet(payload) {
+  try {
+    await fetch(API_BASE, {
+      method: "POST",
+      mode: "no-cors",
+      cache: "no-cache",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    console.log("Write request sent (assuming success)");
+    return true;
+  } catch (err) {
+    console.error("Write failed:", err);
+    return false;
   }
-
-  // ────────────────────────────────────────────────
-  // Save chosen nickname via POST (no-cors)
-  // ────────────────────────────────────────────────
-  async function acceptNickname() {
-    if (!currentNickname) {
-      statusEl.textContent = "No nickname generated yet";
-      statusEl.className = "error";
-      return;
-    }
-
-    statusEl.textContent = "Saving...";
-    statusEl.className = "";
-
-    try {
-      await fetch(API_BASE, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "set_nickname",
-          nickname: currentNickname
-        })
-      });
-
-      statusEl.textContent = `Saved: ${currentNickname} ✓`;
-      statusEl.className = "success";
-
-      localStorage.setItem("gg_nickname", currentNickname);
-
-      setTimeout(() => {
-        alert(`Welcome, ${currentNickname}!`);
-      }, 1600);
-
-    } catch (err) {
-      statusEl.textContent = "Save sent – check sheet";
-      statusEl.className = "error";
-    }
-  }
-
-  // ────────────────────────────────────────────────
-  // Event listeners & auto-start
-  // ────────────────────────────────────────────────
-  document.getElementById("btn-regenerate")?.addEventListener("click", generateNickname);
-  document.getElementById("btn-accept")?.addEventListener("click", acceptNickname);
-
-  generateNickname();
-</script>
-
-</body>
-</html>
+}
