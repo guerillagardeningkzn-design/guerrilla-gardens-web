@@ -102,7 +102,7 @@
   const statusEl = document.getElementById("status");
 
   // ────────────────────────────────────────────────
-  // Load word lists from sheet via gviz (frozen working version)
+  // Load word lists from sheet (exact version that previously worked)
   // ────────────────────────────────────────────────
   async function loadNicknameWords() {
     const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=NameCreationSettings`;
@@ -117,7 +117,7 @@
 
       text = await res.text();
 
-      // Exact stripping that worked before (5460 chars + 98/98 loaded)
+      // Exact stripping that previously succeeded (5460 chars + parse OK)
       text = text
         .replace(/^\/\*O_o\*\//, '')
         .replace(/^google\.visualization\.Query\.setResponse\s*\(/i, '')
@@ -177,7 +177,7 @@
   }
 
   // ────────────────────────────────────────────────
-  // Generate nickname – random 5-digit number client-side
+  // Generate nickname – client-side random 5-digit number
   // ────────────────────────────────────────────────
   async function generateNickname() {
     display.textContent = "Generating...";
