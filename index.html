@@ -102,7 +102,7 @@
   const statusEl = document.getElementById("status");
 
   // ────────────────────────────────────────────────
-  // Load word lists + min/max from sheet (frozen working version)
+  // Load word lists from sheet via gviz (frozen working version)
   // ────────────────────────────────────────────────
   async function loadNicknameWords() {
     const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=NameCreationSettings`;
@@ -117,7 +117,7 @@
 
       text = await res.text();
 
-      // This exact stripping block is what gave you 5460 chars + success before
+      // Exact stripping that worked before (5460 chars + 98/98 loaded)
       text = text
         .replace(/^\/\*O_o\*\//, '')
         .replace(/^google\.visualization\.Query\.setResponse\s*\(/i, '')
@@ -153,30 +153,15 @@
 
       const personas = [];
       const botanicals = [];
-      let min = 10000;
-      let max = 99999;
 
       rows.forEach(row => {
         const p = row["Action & Persona"]?.toString()?.trim();
         const b = row["Botanical & Earth"]?.toString()?.trim();
         if (p) personas.push(p);
         if (b) botanicals.push(b);
-
-        // FIXED min/max – try multiple key variations
-        let minVal = Number(row.Min || row.min || row["Min"] || row["min"] || row["MIN"] || 0);
-        let maxVal = Number(row.Max || row.max || row["Max"] || row["max"] || row["MAX"] || 0);
-
-        if (!isNaN(minVal) && minVal > 0 && min === 10000) min = minVal;
-        if (!isNaN(maxVal) && maxVal > min && max === 99999) max = maxVal;
       });
 
-      // Safety fallback
-      if (min === 10000 || max === 99999 || min >= max || min === 0 || max === 0) {
-        min = 10000;
-        max = 99999;
-      }
-
-      return { personas, botanicals, min, max };
+      return { personas, botanicals };
 
     } catch (err) {
       console.error("gviz load failed:", err);
@@ -186,15 +171,13 @@
 
       return {
         personas: ["Grand", "Shadow", "Wild", "Secret", "Silent", "Mystic", "Rogue", "Hidden"],
-        botanicals: ["Basil", "Leaf", "Root", "Bloom", "Thorn", "Moss", "Fern", "Petal"],
-        min: 10000,
-        max: 99999
+        botanicals: ["Basil", "Leaf", "Root", "Bloom", "Thorn", "Moss", "Fern", "Petal"]
       };
     }
   }
 
   // ────────────────────────────────────────────────
-  // Generate nickname
+  // Generate nickname – random 5-digit number client-side
   // ────────────────────────────────────────────────
   async function generateNickname() {
     display.textContent = "Generating...";
@@ -207,7 +190,8 @@
       const p = config.personas[Math.floor(Math.random() * config.personas.length)];
       const b = config.botanicals[Math.floor(Math.random() * config.botanicals.length)];
 
-      const num = Math.floor(Math.random() * (config.max - config.min + 1)) + config.min;
+      // Pure client-side random 5-digit number (10000–99999)
+      const num = Math.floor(10000 + Math.random() * 90000);
 
       currentNickname = `${p} ${b} ${num}`;
       display.textContent = currentNickname;
@@ -220,7 +204,7 @@
   }
 
   // ────────────────────────────────────────────────
-  // Save nickname
+  // Save chosen nickname via POST (no-cors)
   // ────────────────────────────────────────────────
   async function acceptNickname() {
     if (!currentNickname) {
@@ -259,7 +243,7 @@
   }
 
   // ────────────────────────────────────────────────
-  // Start
+  // Event listeners & auto-start
   // ────────────────────────────────────────────────
   document.getElementById("btn-regenerate")?.addEventListener("click", generateNickname);
   document.getElementById("btn-accept")?.addEventListener("click", acceptNickname);
