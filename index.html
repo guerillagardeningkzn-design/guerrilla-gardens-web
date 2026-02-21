@@ -110,50 +110,60 @@ async function loadNicknameWords() {
   const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=NameCreationSettings`;
   let rawText = '';
   let cleanedText = '';
-  let parsed = null;
 
   try {
-    statusEl.textContent = "Loading word lists...";
+    statusEl.textContent = "Loading word lists from sheet...";
     statusEl.className = '';
 
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`gviz fetch: ${res.status} ${res.statusText}`);
+    if (!res.ok) {
+      throw new Error(`gviz fetch failed → HTTP ${res.status} ${res.statusText}`);
+    }
 
     rawText = await res.text();
     console.log(`Raw gviz response length: ${rawText.length} chars`);
 
-    // Step 1: Strip known wrapper patterns
+    // IMPROVED STRIPPING: remove ONLY the known wrapper, keep nested content intact
     cleanedText = rawText
-      .replace(/^[^]*?{/, '{')                // Remove prefix up to first {
-      .replace(/}[^]*?$/, '}')                // Remove suffix after last }
+      // Remove optional leading comment
       .replace(/^\/\*O_o\*\//, '')
+      // Remove the function call prefix (case insensitive)
       .replace(/^google\.visualization\.Query\.setResponse\s*\(\s*/i, '')
+      // Remove the closing ) and optional ; 
       .replace(/\s*\)\s*;?\s*$/, '')
       .trim();
 
-    console.log(`Cleaned text length after stripping: ${cleanedText.length} chars`);
+    // If still wrapped in extra parens or garbage, trim outer non-JSON chars
+    cleanedText = cleanedText.replace(/^[^"{[]+/, '').replace(/[^"}]]+$/, '');
 
-    // Step 2: Remove trailing commas in arrays/objects (very common gviz bug)
+    console.log(`Cleaned text length: ${cleanedText.length} chars`);
+
+    // Remove trailing commas in arrays/objects (fixes Google's occasional invalid JSON)
     cleanedText = cleanedText.replace(/,\s*([}\]])/g, '$1');
 
-    // Step 3: Try standard JSON.parse
+    // Final parse attempt
+    let parsed;
     try {
       parsed = JSON.parse(cleanedText);
       console.log("Strict JSON.parse succeeded");
     } catch (strictErr) {
       console.warn("Strict parse failed:", strictErr.message);
-      // Last resort: use eval (safe for trusted Google response)
+      // Last-resort fallback: eval (only safe because source is Google)
       try {
         parsed = eval(`(${cleanedText})`);
-        console.log("Eval fallback parse succeeded");
+        console.log("Eval fallback succeeded");
       } catch (evalErr) {
-        console.error("Eval fallback also failed:", evalErr);
-        throw new Error("JSON parse failed even with cleanup");
+        console.error("Eval fallback failed:", evalErr);
+        throw new Error("JSON parse failed even after cleanup");
       }
     }
 
+    if (!parsed || !parsed.table) {
+      throw new Error("Parsed response missing 'table' object");
+    }
+
     // ────────────────────────────────────────────────
-    // Decode HTML entities in column labels
+    // Decode HTML entities in column labels (&amp; → &)
     // ────────────────────────────────────────────────
     function decodeHtmlEntities(str) {
       const txt = document.createElement("textarea");
@@ -161,15 +171,17 @@ async function loadNicknameWords() {
       return txt.value;
     }
 
-    const cols = (parsed?.table?.cols || []).map(col => {
-      const raw = col?.label || col?.id || `col${col?.id || ''}`;
+    const cols = (parsed.table.cols || []).map(col => {
+      const raw = col.label || col.id || `col${col.id || ''}`;
       return decodeHtmlEntities(raw.trim());
     });
 
-    const rows = (parsed?.table?.rows || []).map(r => {
+    const rows = (parsed.table.rows || []).map(r => {
       const obj = {};
       (r.c || []).forEach((cell, i) => {
-        if (i < cols.length) obj[cols[i]] = cell?.v ?? null;
+        if (i < cols.length) {
+          obj[cols[i]] = cell?.v ?? null;
+        }
       });
       return obj;
     });
@@ -195,38 +207,34 @@ async function loadNicknameWords() {
     });
 
     if (personas.length === 0 || botanicals.length === 0) {
-      throw new Error(`No words found (personas: ${personas.length}, botanicals: ${botanicals.length})`);
+      console.warn(`No words found - personas: ${personas.length}, botanicals: ${botanicals.length}`);
     }
 
-    if (min >= max) {
-      throw new Error(`Invalid range min=${min} max=${max}`);
-    }
-
-    console.log(`Success → ${personas.length} personas, ${botanicals.length} botanicals`);
+    console.log(`Loaded ${personas.length} personas, ${botanicals.length} botanicals`);
 
     return { personas, botanicals, min, max };
 
   } catch (err) {
     console.error("gviz load failed:", err);
 
-    // Detailed diagnostics
+    // Diagnostic logs
     if (rawText.length > 0) {
-      console.log("Raw response preview (first 600 chars):");
-      console.log(rawText.substring(0, 600));
+      console.log("Raw response preview (first 800 chars):");
+      console.log(rawText.substring(0, 800));
       console.log("Raw response end (last 400 chars):");
       console.log(rawText.substring(rawText.length - 400));
     }
     if (cleanedText.length > 0) {
-      console.log("Cleaned text preview (first 400 chars):");
-      console.log(cleanedText.substring(0, 400));
+      console.log("Cleaned text preview (first 600 chars):");
+      console.log(cleanedText.substring(0, 600));
     }
 
-    statusEl.textContent = "Sheet load failed – using fallback words";
+    statusEl.textContent = "Sheet load issue – using fallback words";
     statusEl.className = "error";
 
     return {
-      personas: ["Grand", "Shadow", "Wild", "Secret", "Silent", "Mystic", "Rogue", "Hidden", "Fierce", "Swift"],
-      botanicals: ["Basil", "Leaf", "Root", "Bloom", "Thorn", "Moss", "Fern", "Petal", "Vine", "Sprout"],
+      personas: ["Grand", "Shadow", "Wild", "Secret", "Silent", "Mystic", "Rogue", "Hidden", "Fierce", "Swift", "Stealth"],
+      botanicals: ["Basil", "Leaf", "Root", "Bloom", "Thorn", "Moss", "Fern", "Petal", "Vine", "Sprout", "Twig"],
       min: 10000,
       max: 99999
     };
