@@ -103,117 +103,39 @@
   // ────────────────────────────────────────────────
   // Fetch word lists from NameCreationSettings via public gviz endpoint
   // ────────────────────────────────────────────────
-async function loadNicknameWords() {
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=NameCreationSettings`;
-  let text = '';
+// Inside loadNicknameWords(), after parsing the JSON:
 
-  try {
-    statusEl.textContent = "Loading word lists from sheet...";
-
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`gviz fetch failed → HTTP ${res.status} ${res.statusText}`);
-    }
-
-    text = await res.text();
-
-    console.log(`gviz raw response length: ${text.length} chars`);
-
-    // Step 1: Aggressive prefix/suffix stripping
-    text = text
-      .replace(/^[^]*?{/, '{')                     // remove everything before first {
-      .replace(/}[^]*?$/, '}')                     // remove everything after last }
-      .replace(/^\/\*O_o\*\//, '')
-      .replace(/^google\.visualization\.Query\.setResponse\s*\(\s*/i, '')
-      .replace(/\s*\)\s*;?\s*$/, '')
-      .trim();
-
-    // Step 2: Fix common Google JSON malformations
-    // Remove trailing commas in arrays/objects (invalid JSON)
-    text = text.replace(/,\s*([\]}])/g, '$1');
-
-    // Step 3: Try parsing
-    let parsed;
-    try {
-      parsed = JSON.parse(text);
-    } catch (parseErr) {
-      // Last resort: log exact position of failure
-      console.log("Parse failed at position:", parseErr.message);
-      console.log("Text around failure:", text.substring(0, 200));
-      throw parseErr;
-    }
-
-    // ────────────────────────────────────────────────
-    // Extract columns and rows (defensive)
-    // ────────────────────────────────────────────────
-    const cols = (parsed.table?.cols || []).map((col, idx) => 
-      (col?.label || col?.id || `col${idx}`).trim()
-    );
-
-    const rows = (parsed.table?.rows || []).map(r => {
-      const obj = {};
-      (r.c || []).forEach((cell, i) => {
-        if (i < cols.length) {
-          obj[cols[i]] = cell?.v ?? null;
-        }
-      });
-      return obj;
-    });
-
-    // ────────────────────────────────────────────────
-    // Build nickname config
-    // ────────────────────────────────────────────────
-    const personas = [];
-    const botanicals = [];
-    let min = 10000;
-    let max = 99999;
-
-    rows.forEach(row => {
-      const p = row["Action & Persona"]?.toString()?.trim();
-      const b = row["Botanical & Earth"]?.toString()?.trim();
-      if (p) personas.push(p);
-      if (b) botanicals.push(b);
-
-      const rowMin = Number(row.Min);
-      const rowMax = Number(row.Max);
-      if (!isNaN(rowMin) && min === 10000) min = rowMin;
-      if (!isNaN(rowMax) && max === 99999) max = rowMax;
-    });
-
-    if (personas.length === 0 || botanicals.length === 0) {
-      throw new Error(`No words found. Personas: ${personas.length}, Botanicals: ${botanicals.length}`);
-    }
-
-    if (min >= max) {
-      throw new Error(`Invalid range: min=${min}, max=${max}`);
-    }
-
-    console.log(`Success: ${personas.length} personas, ${botanicals.length} botanicals loaded`);
-
-    return { personas, botanicals, min, max };
-
-  } catch (err) {
-    console.error("gviz load failed:", err);
-    if (text.length > 0) {
-      console.log("Raw response preview (first 400 chars):");
-      console.log(text.substring(0, 400));
-      console.log("Last 200 chars of response:");
-      console.log(text.substring(text.length - 200));
-    } else {
-      console.log("No response text received (fetch likely failed)");
-    }
-
-    statusEl.textContent = "Could not load word lists – using fallback words";
-    statusEl.className = "error";
-
-    return {
-      personas: ["Grand", "Shadow", "Wild", "Secret", "Silent", "Mystic", "Rogue", "Hidden", "Fierce", "Swift"],
-      botanicals: ["Basil", "Leaf", "Root", "Bloom", "Thorn", "Moss", "Fern", "Petal", "Vine", "Sprout", "Twig"],
-      min: 10000,
-      max: 99999
-    };
-  }
+// Helper to decode HTML entities like &amp; → &
+function decodeHtmlEntities(str) {
+  const txt = document.createElement("textarea");
+  txt.innerHTML = str;
+  return txt.value;
 }
+
+// Then, when mapping columns:
+const cols = (parsed.table?.cols || []).map(col => {
+  const rawLabel = col.label || col.id || `col${col.id || ''}`;
+  return decodeHtmlEntities(rawLabel.trim());
+});
+
+// Now the rest stays the same:
+const personas = [];
+const botanicals = [];
+let min = 10000;
+let max = 99999;
+
+rows.forEach(row => {
+  // Use the decoded label
+  const p = row["Action & Persona"]?.toString()?.trim();
+  const b = row["Botanical & Earth"]?.toString()?.trim();
+  if (p) personas.push(p);
+  if (b) botanicals.push(b);
+
+  const rowMin = Number(row.Min);
+  const rowMax = Number(row.Max);
+  if (!isNaN(rowMin) && min === 10000) min = rowMin;
+  if (!isNaN(rowMax) && max === 99999) max = rowMax;
+});
 
   // ────────────────────────────────────────────────
   // Generate nickname client-side from loaded words
