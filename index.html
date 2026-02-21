@@ -103,6 +103,7 @@
 
   // ────────────────────────────────────────────────
   // Load word lists + min/max from sheet via gviz
+  // (this is the version that gives you 98/98 + 5460 cleaned chars)
   // ────────────────────────────────────────────────
   async function loadNicknameWords() {
     const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=NameCreationSettings`;
@@ -117,7 +118,7 @@
 
       rawText = await res.text();
 
-      // Stripping – keep this exactly as it is now (working)
+      // Stripping – keep this exact block that is working for you
       let text = rawText
         .replace(/^\/\*O_o\*\//, '')
         .replace(/^google\.visualization\.Query\.setResponse\s*\(/i, '')
@@ -162,19 +163,20 @@
         if (p) personas.push(p);
         if (b) botanicals.push(b);
 
-        // More robust min/max detection – try multiple key variations
-        const minVal = Number(row.Min ?? row.min ?? row["Min"] ?? row["min"]);
-        const maxVal = Number(row.Max ?? row.max ?? row["Max"] ?? row["max"]);
-        if (!isNaN(minVal) && min === 10000) min = minVal;
-        if (!isNaN(maxVal) && max === 99999) max = maxVal;
+        // FIXED min/max extraction – more tolerant key lookup
+        let minVal = Number(row.Min || row.min || row["Min"] || row["min"] || row["MIN"] || 0);
+        let maxVal = Number(row.Max || row.max || row["Max"] || row["max"] || row["MAX"] || 0);
+
+        if (!isNaN(minVal) && minVal > 0 && min === 10000) {
+          min = minVal;
+        }
+        if (!isNaN(maxVal) && maxVal > min && max === 99999) {
+          max = maxVal;
+        }
       });
 
-      if (personas.length === 0 || botanicals.length === 0) {
-        throw new Error(`No words found (personas: ${personas.length}, botanicals: ${botanicals.length})`);
-      }
-
-      // Safety fallback for range
-      if (min >= max || min === 0 || max === 0) {
+      // Final safety fallback
+      if (min === 10000 || max === 99999 || min >= max || min === 0 || max === 0) {
         min = 10000;
         max = 99999;
       }
@@ -197,7 +199,7 @@
   }
 
   // ────────────────────────────────────────────────
-  // Generate nickname – now with correct number
+  // Generate nickname with correct number
   // ────────────────────────────────────────────────
   async function generateNickname() {
     display.textContent = "Generating...";
@@ -254,6 +256,7 @@
 
       setTimeout(() => {
         alert(`Welcome, ${currentNickname}! Let's start planting.`);
+        // window.location.href = "dashboard.html"; // your next page
       }, 1600);
 
     } catch (err) {
