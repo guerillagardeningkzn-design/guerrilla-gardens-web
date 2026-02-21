@@ -93,7 +93,7 @@
 
 <script>
   // ────────────────────────────────────────────────
-  // CONFIG – change these if needed
+  // CONFIG
   // ────────────────────────────────────────────────
   const SHEET_ID = "1syH1gj9L-HHC3dlGoO-RTUthIXsEeUYC_81jlAvHfsg";
   const API_BASE = "https://script.google.com/macros/s/AKfycbzTLEZjy5G5Xs9Vs5hS9QzWHlfMJTF5yF0Q-wCLYmPW6un0UAVHCnzx0Icu5ZMfF5K/exec";
@@ -104,11 +104,109 @@
   const statusEl = document.getElementById("status");
 
   // ────────────────────────────────────────────────
-  // Load nickname word lists from sheet via public gviz endpoint
+  // 1. Load word lists from sheet (must come FIRST)
   // ────────────────────────────────────────────────
-generateNickname
+  async function loadNicknameWords() {
+    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=NameCreationSettings`;
+    let rawText = '';
+    let cleanedText = '';
+    let parsed = null;
+
+    try {
+      statusEl.textContent = "Loading word lists...";
+      statusEl.className = '';
+
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`gviz HTTP ${res.status}`);
+
+      rawText = await res.text();
+      console.log(`Raw gviz length: ${rawText.length} chars`);
+
+      cleanedText = rawText
+        .replace(/^[^]*?{/, '{')
+        .replace(/}[^]*?$/, '}')
+        .replace(/^\/\*O_o\*\//, '')
+        .replace(/^google\.visualization\.Query\.setResponse\s*\(\s*/i, '')
+        .replace(/\s*\)\s*;?\s*$/, '')
+        .trim();
+
+      cleanedText = cleanedText.replace(/,\s*([}\]])/g, '$1');
+
+      console.log(`Cleaned length: ${cleanedText.length} chars`);
+
+      try {
+        parsed = JSON.parse(cleanedText);
+        console.log("Strict parse OK");
+      } catch (e) {
+        console.warn("Strict parse failed:", e.message);
+        parsed = eval(`(${cleanedText})`);
+        console.log("Eval fallback OK");
+      }
+
+      function decodeHtmlEntities(str) {
+        const txt = document.createElement("textarea");
+        txt.innerHTML = str;
+        return txt.value;
+      }
+
+      const cols = (parsed?.table?.cols || []).map(col => {
+        const raw = col?.label || col?.id || `col${col?.id || ''}`;
+        return decodeHtmlEntities(raw.trim());
+      });
+
+      const rows = (parsed?.table?.rows || []).map(r => {
+        const obj = {};
+        (r.c || []).forEach((cell, i) => {
+          if (i < cols.length) obj[cols[i]] = cell?.v ?? null;
+        });
+        return obj;
+      });
+
+      const personas = [];
+      const botanicals = [];
+      let min = 10000;
+      let max = 99999;
+
+      rows.forEach(row => {
+        const p = row["Action & Persona"]?.toString()?.trim();
+        const b = row["Botanical & Earth"]?.toString()?.trim();
+        if (p) personas.push(p);
+        if (b) botanicals.push(b);
+
+        const m = Number(row.Min);
+        const M = Number(row.Max);
+        if (!isNaN(m) && min === 10000) min = m;
+        if (!isNaN(M) && max === 99999) max = M;
+      });
+
+      if (!personas.length || !botanicals.length) {
+        console.warn(`Words missing: personas=${personas.length}, botanicals=${botanicals.length}`);
+      }
+
+      console.log(`Loaded ${personas.length} personas, ${botanicals.length} botanicals`);
+
+      return { personas, botanicals, min, max };
+
+    } catch (err) {
+      console.error("gviz load failed:", err);
+      if (rawText) {
+        console.log("Raw preview:", rawText.substring(0, 500));
+        console.log("Raw end:", rawText.substring(rawText.length - 300));
+      }
+      statusEl.textContent = "Sheet load failed – using fallback";
+      statusEl.className = "error";
+
+      return {
+        personas: ["Grand", "Shadow", "Wild", "Secret", "Silent", "Mystic", "Rogue", "Hidden"],
+        botanicals: ["Basil", "Leaf", "Root", "Bloom", "Thorn", "Moss", "Fern", "Petal"],
+        min: 10000,
+        max: 99999
+      };
+    }
+  }
+
   // ────────────────────────────────────────────────
-  // Generate nickname client-side from loaded words
+  // 2. Generate nickname (must come AFTER load function)
   // ────────────────────────────────────────────────
   async function generateNickname() {
     display.textContent = "Generating...";
@@ -118,6 +216,8 @@ generateNickname
     try {
       const config = await loadNicknameWords();
 
+      console.log(`Range loaded: ${config.min} to ${config.max}`);
+
       const p = config.personas[Math.floor(Math.random() * config.personas.length)];
       const b = config.botanicals[Math.floor(Math.random() * config.botanicals.length)];
       const num = Math.floor(Math.random() * (config.max - config.min + 1)) + config.min;
@@ -126,18 +226,18 @@ generateNickname
       display.textContent = currentNickname;
 
     } catch (err) {
-      display.textContent = "(generation failed)";
-      statusEl.textContent = err.message || "Error generating nickname";
+      display.textContent = "(failed)";
+      statusEl.textContent = err.message || "Generation error";
       statusEl.className = "error";
     }
   }
 
   // ────────────────────────────────────────────────
-  // Save chosen nickname via POST (no-cors)
+  // 3. Save nickname
   // ────────────────────────────────────────────────
   async function acceptNickname() {
     if (!currentNickname) {
-      statusEl.textContent = "No nickname generated yet";
+      statusEl.textContent = "No name yet";
       statusEl.className = "error";
       return;
     }
@@ -149,7 +249,6 @@ generateNickname
       await fetch(API_BASE, {
         method: "POST",
         mode: "no-cors",
-        cache: "no-cache",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "set_nickname",
@@ -163,26 +262,22 @@ generateNickname
       localStorage.setItem("gg_nickname", currentNickname);
 
       setTimeout(() => {
-        alert(`Welcome, ${currentNickname}! Let's start planting.`);
-        // window.location.href = "dashboard.html"; // ← change to your next page
-      }, 1600);
+        alert(`Welcome, ${currentNickname}!`);
+      }, 1400);
 
     } catch (err) {
-      statusEl.textContent = "Save request sent – check spreadsheet manually";
+      statusEl.textContent = "Save sent – check sheet";
       statusEl.className = "error";
-      console.warn("POST send:", err);
     }
   }
 
   // ────────────────────────────────────────────────
-  // Event listeners & start
+  // Start
   // ────────────────────────────────────────────────
-  document.getElementById("btn-regenerate").addEventListener("click", generateNickname);
-  document.getElementById("btn-accept").addEventListener("click", acceptNickname);
+  document.getElementById("btn-regenerate")?.addEventListener("click", generateNickname);
+  document.getElementById("btn-accept")?.addEventListener("click", acceptNickname);
 
-  // Auto-generate on load
   generateNickname();
 </script>
-
 </body>
 </html>
