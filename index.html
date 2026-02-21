@@ -3,39 +3,164 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Guerrilla Gardens</title>
-  
-  <link rel="manifest" href="manifest.webmanifest">
-  <meta name="theme-color" content="#1a3c1a">
-  <link rel="icon" href="assets/icons/icon-192.png" type="image/png">
-  
-  <link rel="stylesheet" href="css/main.css">
+  <title>Guerrilla Gardens - Onboarding</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f0f7f0;
+      color: #1b3a1b;
+      margin: 0;
+      padding: 20px;
+      line-height: 1.5;
+    }
+    .container {
+      max-width: 500px;
+      margin: 0 auto;
+      background: white;
+      padding: 2rem;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    }
+    h1, h2 { color: #2e7d32; }
+    #nickname-display {
+      font-size: 2.4rem;
+      font-weight: bold;
+      color: #1b5e20;
+      background: #e8f5e9;
+      padding: 1.4rem;
+      border-radius: 12px;
+      text-align: center;
+      margin: 1.5rem 0;
+      min-height: 90px;
+      word-break: break-word;
+    }
+    .buttons {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin: 1.5rem 0;
+    }
+    button {
+      padding: 0.9rem 2rem;
+      font-size: 1.1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+    }
+    #btn-regenerate {
+      background: #81c784;
+      color: #1b3a1b;
+    }
+    #btn-accept {
+      background: #388e3c;
+      color: white;
+    }
+    button:hover { opacity: 0.92; transform: translateY(-1px); }
+    #status {
+      text-align: center;
+      font-size: 1.1rem;
+      min-height: 1.8em;
+      margin-top: 1rem;
+    }
+    .success { color: #2e7d32; }
+    .error   { color: #d32f2f; }
+  </style>
 </head>
 <body>
 
-<div id="splash" class="screen active">
-  <div class="content">
-    <h1>Guerrilla Gardens</h1>
-    <p>Plant secret gardens.<br>Grow. Defend. Team up.</p>
-    
-    <div id="auth-area">
-      <button id="btn-start" class="big-btn">Start with Google</button>
-      <p id="auth-status" class="status"></p>
+<div class="container">
+  <h1>Welcome to Guerrilla Gardens</h1>
+  
+  <div id="nickname-step">
+    <h2>Choose Your Guerrilla Identity</h2>
+    <p style="text-align:center; opacity:0.8;">
+      This name will represent you in the community.
+    </p>
+
+    <div id="nickname-display">Loading your name...</div>
+
+    <div class="buttons">
+      <button id="btn-regenerate">🔄 Another suggestion</button>
+      <button id="btn-accept">✓ Accept this name</button>
     </div>
+
+    <div id="status"></div>
   </div>
 </div>
 
-<div id="dashboard" class="screen">
-  <div class="content">
-    <h1>Welcome, <span id="user-name">...</span></h1>
-    <p>XP: <span id="user-xp">0</span> | Compost: <span id="compost-basic">0</span></p>
-    <button class="big-btn" onclick="alert('Map screen coming next — working on it!')">Open Map</button>
-    <!-- placeholder for future map link -->
-  </div>
-</div>
+<script>
+  const API_BASE = 'https://script.google.com/macros/s/AKfycbzTLEZjy5G5Xs9Vs5hS9QzWHlfMJTF5yF0Q-wCLYmPW6un0UAVHCnzx0Icu5ZMfF5K/exec';
 
-<script src="js/auth.js"></script>
-<script src="js/main.js"></script>
+  let currentNickname = '';
+
+  const display = document.getElementById('nickname-display');
+  const status   = document.getElementById('status');
+
+  async function generateNickname() {
+    display.textContent = 'Generating...';
+    status.textContent = '';
+    status.className = '';
+
+    try {
+      const res = await fetch(`${API_BASE}?action=generate_nickname`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      if (!data.success) throw new Error(data.error || 'Failed');
+
+      currentNickname = data.nickname;
+      display.textContent = currentNickname;
+
+    } catch (err) {
+      display.textContent = '(generation failed)';
+      status.textContent = err.message;
+      status.className = 'error';
+    }
+  }
+
+  async function acceptNickname() {
+    if (!currentNickname) {
+      status.textContent = 'No name generated yet';
+      status.className = 'error';
+      return;
+    }
+
+    status.textContent = 'Saving...';
+    status.className = '';
+
+    try {
+      const url = `${API_BASE}?action=set_nickname&nickname=${encodeURIComponent(currentNickname)}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Save failed');
+
+      status.textContent = `Saved: ${currentNickname} ✓`;
+      status.className = 'success';
+
+      localStorage.setItem('gg_nickname', currentNickname);
+
+      // Next step – replace with your real flow
+      setTimeout(() => {
+        alert(`Welcome, ${currentNickname}! Let's start gardening.`);
+        // window.location.href = 'dashboard.html';
+      }, 1400);
+
+    } catch (err) {
+      status.textContent = 'Failed to save: ' + err.message;
+      status.className = 'error';
+    }
+  }
+
+  document.getElementById('btn-regenerate').addEventListener('click', generateNickname);
+  document.getElementById('btn-accept').addEventListener('click', acceptNickname);
+
+  // Start
+  generateNickname();
+</script>
 
 </body>
 </html>
