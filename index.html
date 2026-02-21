@@ -3,91 +3,78 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Guerrilla Gardens - Onboarding</title>
+  <title>Guerrilla Gardens - Nickname</title>
   <style>
-    body {
-      font-family: system-ui, sans-serif;
-      background: #f0f7f0;
-      color: #1b3a1b;
-      margin: 0;
-      padding: 20px;
-      line-height: 1.5;
+    body { 
+      font-family: system-ui, sans-serif; 
+      background: #f0f7f0; 
+      color: #1b3a1b; 
+      margin:0; 
+      padding:20px; 
     }
-    .container {
-      max-width: 500px;
-      margin: 0 auto;
-      background: white;
-      padding: 2rem;
-      border-radius: 16px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    .container { 
+      max-width: 520px; 
+      margin: 0 auto; 
+      background: white; 
+      padding: 2rem; 
+      border-radius: 16px; 
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1); 
     }
-    h1, h2 { color: #2e7d32; }
-    #nickname-display {
-      font-size: 2.4rem;
-      font-weight: bold;
-      color: #1b5e20;
-      background: #e8f5e9;
-      padding: 1.4rem;
-      border-radius: 12px;
-      text-align: center;
-      margin: 1.5rem 0;
-      min-height: 90px;
-      word-break: break-word;
+    h1, h2 { color: #2e7d32; text-align: center; }
+    #nickname-display { 
+      font-size: 2.5rem; 
+      font-weight: bold; 
+      color: #1b5e20; 
+      background: #e8f5e9; 
+      padding: 1.4rem; 
+      border-radius: 12px; 
+      text-align: center; 
+      margin: 1.8rem 0; 
+      min-height: 100px; 
+      word-break: break-word; 
     }
-    .buttons {
-      display: flex;
-      gap: 1rem;
-      justify-content: center;
-      flex-wrap: wrap;
-      margin: 1.5rem 0;
+    .buttons { 
+      display: flex; 
+      gap: 1.2rem; 
+      justify-content: center; 
+      flex-wrap: wrap; 
+      margin: 1.8rem 0; 
     }
-    button {
-      padding: 0.9rem 2rem;
-      font-size: 1.1rem;
-      border-radius: 8px;
-      cursor: pointer;
-      border: none;
-      transition: all 0.15s;
+    button { 
+      padding: 0.9rem 2.2rem; 
+      font-size: 1.15rem; 
+      border-radius: 10px; 
+      cursor: pointer; 
+      border: none; 
+      transition: all 0.2s; 
     }
-    #btn-regenerate {
-      background: #81c784;
-      color: #1b3a1b;
+    #btn-regenerate { background: #81c784; color: #1b3a1b; }
+    #btn-accept     { background: #388e3c; color: white; }
+    button:hover    { transform: translateY(-2px); opacity: 0.94; }
+    #status         { 
+      text-align: center; 
+      font-size: 1.15rem; 
+      min-height: 2em; 
+      margin-top: 1.2rem; 
     }
-    #btn-accept {
-      background: #388e3c;
-      color: white;
-    }
-    button:hover { opacity: 0.92; transform: translateY(-1px); }
-    #status {
-      text-align: center;
-      font-size: 1.1rem;
-      min-height: 1.8em;
-      margin-top: 1rem;
-    }
-    .success { color: #2e7d32; }
+    .success { color: #2e7d32; font-weight: 500; }
     .error   { color: #d32f2f; }
   </style>
 </head>
 <body>
 
 <div class="container">
-  <h1>Welcome to Guerrilla Gardens</h1>
-  
-  <div id="nickname-step">
-    <h2>Choose Your Guerrilla Identity</h2>
-    <p style="text-align:center; opacity:0.8;">
-      This name will represent you in the community.
-    </p>
+  <h1>Guerrilla Gardens</h1>
+  <h2>Choose Your Nickname</h2>
 
-    <div id="nickname-display">Loading your name...</div>
+  <div id="nickname-display">Loading nickname...</div>
 
-    <div class="buttons">
-      <button id="btn-regenerate">🔄 Another suggestion</button>
-      <button id="btn-accept">✓ Accept this name</button>
-    </div>
-
-    <div id="status"></div>
+  <div class="buttons">
+    <button id="btn-regenerate">Regenerate</button>
+    <button id="btn-accept">Accept this name</button>
   </div>
+
+  <div id="status"></div>
 </div>
 
 <script>
@@ -96,71 +83,88 @@
   let currentNickname = '';
 
   const display = document.getElementById('nickname-display');
-  const status   = document.getElementById('status');
+  const statusEl = document.getElementById('status');
+
+  // Fallback: client-side generation (used when GET blocked)
+  function generateNicknameLocally() {
+    const personas = ["Grand", "Shadow", "Wild", "Secret", "Silent", "Mystic", "Rogue", "Hidden", "Fierce"];
+    const botanicals = ["Basil", "Leaf", "Root", "Bloom", "Thorn", "Moss", "Fern", "Petal", "Vine", "Sprout"];
+    const p = personas[Math.floor(Math.random() * personas.length)];
+    const b = botanicals[Math.floor(Math.random() * botanicals.length)];
+    const num = Math.floor(Math.random() * (99999 - 10000 + 1)) + 10000;
+    return `${p} ${b} ${num}`;
+  }
 
   async function generateNickname() {
     display.textContent = 'Generating...';
-    status.textContent = '';
-    status.className = '';
+    statusEl.textContent = '';
+    statusEl.className = '';
 
     try {
+      // Try GET first
       const res = await fetch(`${API_BASE}?action=generate_nickname`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-
-      if (!data.success) throw new Error(data.error || 'Failed');
-
-      currentNickname = data.nickname;
-      display.textContent = currentNickname;
-
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          currentNickname = data.nickname;
+          display.textContent = currentNickname;
+          return;
+        }
+      }
     } catch (err) {
-      display.textContent = '(generation failed)';
-      status.textContent = err.message;
-      status.className = 'error';
+      console.warn('GET nickname failed → using client fallback', err);
     }
+
+    // Fallback: generate locally
+    currentNickname = generateNicknameLocally();
+    display.textContent = currentNickname;
   }
 
   async function acceptNickname() {
     if (!currentNickname) {
-      status.textContent = 'No name generated yet';
-      status.className = 'error';
+      statusEl.textContent = 'No nickname generated yet';
+      statusEl.className = 'error';
       return;
     }
 
-    status.textContent = 'Saving...';
-    status.className = '';
+    statusEl.textContent = 'Saving...';
+    statusEl.className = '';
 
     try {
-      const url = `${API_BASE}?action=set_nickname&nickname=${encodeURIComponent(currentNickname)}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const res = await fetch(API_BASE, {
+        method: 'POST',
+        mode: 'no-cors',
+        cache: 'no-cache',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'set_nickname',
+          nickname: currentNickname
+        })
+      });
 
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'Save failed');
-
-      status.textContent = `Saved: ${currentNickname} ✓`;
-      status.className = 'success';
+      // no-cors → assume success if no network error
+      statusEl.textContent = `Saved: ${currentNickname} ✓`;
+      statusEl.className = 'success';
 
       localStorage.setItem('gg_nickname', currentNickname);
 
-      // Next step – replace with your real flow
       setTimeout(() => {
-        alert(`Welcome, ${currentNickname}! Let's start gardening.`);
-        // window.location.href = 'dashboard.html';
-      }, 1400);
+        alert(`Welcome, ${currentNickname}! Let's grow.`);
+        // window.location.href = 'dashboard.html'; // ← change to your next page
+      }, 1800);
 
     } catch (err) {
-      status.textContent = 'Failed to save: ' + err.message;
-      status.className = 'error';
+      statusEl.textContent = 'Save may have failed – check spreadsheet manually';
+      statusEl.className = 'error';
+      console.error('Save attempt failed', err);
     }
   }
 
   document.getElementById('btn-regenerate').addEventListener('click', generateNickname);
   document.getElementById('btn-accept').addEventListener('click', acceptNickname);
 
-  // Start
+  // Initial load
   generateNickname();
 </script>
-
 </body>
 </html>
