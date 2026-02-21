@@ -102,12 +102,11 @@
   const statusEl = document.getElementById("status");
 
   // ────────────────────────────────────────────────
-  // Load word lists + min/max from sheet via gviz
-  // (this is the version that gives you 98/98 + 5460 cleaned chars)
+  // Load word lists + min/max from sheet (frozen working version)
   // ────────────────────────────────────────────────
   async function loadNicknameWords() {
     const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=NameCreationSettings`;
-    let rawText = '';
+    let text = '';
 
     try {
       statusEl.textContent = "Loading word lists...";
@@ -116,10 +115,10 @@
       const res = await fetch(url);
       if (!res.ok) throw new Error(`gviz fetch: ${res.status}`);
 
-      rawText = await res.text();
+      text = await res.text();
 
-      // Stripping – keep this exact block that is working for you
-      let text = rawText
+      // This exact stripping block is what gave you 5460 chars + success before
+      text = text
         .replace(/^\/\*O_o\*\//, '')
         .replace(/^google\.visualization\.Query\.setResponse\s*\(/i, '')
         .replace(/\)\s*;?\s*$/, '')
@@ -163,19 +162,15 @@
         if (p) personas.push(p);
         if (b) botanicals.push(b);
 
-        // FIXED min/max extraction – more tolerant key lookup
+        // FIXED min/max – try multiple key variations
         let minVal = Number(row.Min || row.min || row["Min"] || row["min"] || row["MIN"] || 0);
         let maxVal = Number(row.Max || row.max || row["Max"] || row["max"] || row["MAX"] || 0);
 
-        if (!isNaN(minVal) && minVal > 0 && min === 10000) {
-          min = minVal;
-        }
-        if (!isNaN(maxVal) && maxVal > min && max === 99999) {
-          max = maxVal;
-        }
+        if (!isNaN(minVal) && minVal > 0 && min === 10000) min = minVal;
+        if (!isNaN(maxVal) && maxVal > min && max === 99999) max = maxVal;
       });
 
-      // Final safety fallback
+      // Safety fallback
       if (min === 10000 || max === 99999 || min >= max || min === 0 || max === 0) {
         min = 10000;
         max = 99999;
@@ -185,7 +180,7 @@
 
     } catch (err) {
       console.error("gviz load failed:", err);
-      if (rawText) console.log("Raw preview:", rawText.substring(0, 400));
+      if (text) console.log("Raw preview:", text.substring(0, 400));
       statusEl.textContent = "Sheet load failed – using fallback";
       statusEl.className = "error";
 
@@ -199,7 +194,7 @@
   }
 
   // ────────────────────────────────────────────────
-  // Generate nickname with correct number
+  // Generate nickname
   // ────────────────────────────────────────────────
   async function generateNickname() {
     display.textContent = "Generating...";
@@ -212,7 +207,6 @@
       const p = config.personas[Math.floor(Math.random() * config.personas.length)];
       const b = config.botanicals[Math.floor(Math.random() * config.botanicals.length)];
 
-      // Correct inclusive random number from sheet range
       const num = Math.floor(Math.random() * (config.max - config.min + 1)) + config.min;
 
       currentNickname = `${p} ${b} ${num}`;
@@ -226,7 +220,7 @@
   }
 
   // ────────────────────────────────────────────────
-  // Save chosen nickname via POST (no-cors)
+  // Save nickname
   // ────────────────────────────────────────────────
   async function acceptNickname() {
     if (!currentNickname) {
@@ -255,18 +249,17 @@
       localStorage.setItem("gg_nickname", currentNickname);
 
       setTimeout(() => {
-        alert(`Welcome, ${currentNickname}! Let's start planting.`);
-        // window.location.href = "dashboard.html"; // your next page
+        alert(`Welcome, ${currentNickname}!`);
       }, 1600);
 
     } catch (err) {
-      statusEl.textContent = "Save request sent – check spreadsheet manually";
+      statusEl.textContent = "Save sent – check sheet";
       statusEl.className = "error";
     }
   }
 
   // ────────────────────────────────────────────────
-  // Event listeners & auto-start
+  // Start
   // ────────────────────────────────────────────────
   document.getElementById("btn-regenerate")?.addEventListener("click", generateNickname);
   document.getElementById("btn-accept")?.addEventListener("click", acceptNickname);
