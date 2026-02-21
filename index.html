@@ -3,71 +3,82 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Guerrilla Gardens - Nickname</title>
+  <title>Guerrilla Gardens – Nickname Setup</title>
   <style>
-    body { 
-      font-family: system-ui, sans-serif; 
-      background: #f0f7f0; 
-      color: #1b3a1b; 
-      margin:0; 
-      padding:20px; 
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f5f8f5;
+      color: #1a3c1a;
+      margin: 0;
+      padding: 20px;
+      line-height: 1.6;
     }
-    .container { 
-      max-width: 520px; 
-      margin: 0 auto; 
-      background: white; 
-      padding: 2rem; 
-      border-radius: 16px; 
-      box-shadow: 0 4px 20px rgba(0,0,0,0.1); 
+    .container {
+      max-width: 540px;
+      margin: 0 auto;
+      background: white;
+      padding: 2rem;
+      border-radius: 16px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
     }
     h1, h2 { color: #2e7d32; text-align: center; }
-    #nickname-display { 
-      font-size: 2.5rem; 
-      font-weight: bold; 
-      color: #1b5e20; 
-      background: #e8f5e9; 
-      padding: 1.4rem; 
-      border-radius: 12px; 
-      text-align: center; 
-      margin: 1.8rem 0; 
-      min-height: 100px; 
-      word-break: break-word; 
+    #nickname-display {
+      font-size: 2.6rem;
+      font-weight: bold;
+      color: #1b5e20;
+      background: #e8f5e9;
+      padding: 1.5rem;
+      border-radius: 12px;
+      text-align: center;
+      margin: 2rem 0;
+      min-height: 110px;
+      word-break: break-word;
+      line-height: 1.3;
     }
-    .buttons { 
-      display: flex; 
-      gap: 1.2rem; 
-      justify-content: center; 
-      flex-wrap: wrap; 
-      margin: 1.8rem 0; 
+    .buttons {
+      display: flex;
+      gap: 1.2rem;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin: 2rem 0;
     }
-    button { 
-      padding: 0.9rem 2.2rem; 
-      font-size: 1.15rem; 
-      border-radius: 10px; 
-      cursor: pointer; 
-      border: none; 
-      transition: all 0.2s; 
+    button {
+      padding: 1rem 2.2rem;
+      font-size: 1.15rem;
+      border-radius: 10px;
+      cursor: pointer;
+      border: none;
+      transition: all 0.18s;
     }
-    #btn-regenerate { background: #81c784; color: #1b3a1b; }
-    #btn-accept     { background: #388e3c; color: white; }
-    button:hover    { transform: translateY(-2px); opacity: 0.94; }
-    #status         { 
-      text-align: center; 
-      font-size: 1.15rem; 
-      min-height: 2em; 
-      margin-top: 1.2rem; 
+    #btn-regenerate {
+      background: #81c784;
+      color: #1b3a1b;
+    }
+    #btn-accept {
+      background: #388e3c;
+      color: white;
+    }
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    #status {
+      text-align: center;
+      font-size: 1.15rem;
+      min-height: 2em;
+      margin-top: 1.5rem;
     }
     .success { color: #2e7d32; font-weight: 500; }
-    .error   { color: #d32f2f; }
+    .error   { color: #c62828; }
   </style>
 </head>
 <body>
 
 <div class="container">
   <h1>Guerrilla Gardens</h1>
-  <h2>Choose Your Nickname</h2>
+  <h2>Choose Your Guerrilla Nickname</h2>
 
-  <div id="nickname-display">Loading nickname...</div>
+  <div id="nickname-display">Loading your nickname suggestion...</div>
 
   <div class="buttons">
     <button id="btn-regenerate">Regenerate</button>
@@ -78,93 +89,154 @@
 </div>
 
 <script>
-  const API_BASE = 'https://script.google.com/macros/s/AKfycbzTLEZjy5G5Xs9Vs5hS9QzWHlfMJTF5yF0Q-wCLYmPW6un0UAVHCnzx0Icu5ZMfF5K/exec';
+  // ────────────────────────────────────────────────
+  // CONFIG – change only these values
+  // ────────────────────────────────────────────────
+  const SHEET_ID = "1syH1gj9L-HHC3dlGoO-RTUthIXsEeUYC_81jlAvHfsg";
+  const API_BASE = "https://script.google.com/macros/s/AKfycbzTLEZjy5G5Xs9Vs5hS9QzWHlfMJTF5yF0Q-wCLYmPW6un0UAVHCnzx0Icu5ZMfF5K/exec";
 
-  let currentNickname = '';
+  let currentNickname = "";
 
-  const display = document.getElementById('nickname-display');
-  const statusEl = document.getElementById('status');
+  const display = document.getElementById("nickname-display");
+  const statusEl = document.getElementById("status");
 
-  // Fallback: client-side generation (used when GET blocked)
-  function generateNicknameLocally() {
-    const personas = ["Grand", "Shadow", "Wild", "Secret", "Silent", "Mystic", "Rogue", "Hidden", "Fierce"];
-    const botanicals = ["Basil", "Leaf", "Root", "Bloom", "Thorn", "Moss", "Fern", "Petal", "Vine", "Sprout"];
-    const p = personas[Math.floor(Math.random() * personas.length)];
-    const b = botanicals[Math.floor(Math.random() * botanicals.length)];
-    const num = Math.floor(Math.random() * (99999 - 10000 + 1)) + 10000;
-    return `${p} ${b} ${num}`;
-  }
-
-  async function generateNickname() {
-    display.textContent = 'Generating...';
-    statusEl.textContent = '';
-    statusEl.className = '';
+  // ────────────────────────────────────────────────
+  // Fetch word lists from NameCreationSettings via public gviz endpoint
+  // ────────────────────────────────────────────────
+  async function loadNicknameWords() {
+    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=NameCreationSettings`;
 
     try {
-      // Try GET first
-      const res = await fetch(`${API_BASE}?action=generate_nickname`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          currentNickname = data.nickname;
-          display.textContent = currentNickname;
-          return;
-        }
-      }
-    } catch (err) {
-      console.warn('GET nickname failed → using client fallback', err);
-    }
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`gviz fetch failed: ${res.status}`);
 
-    // Fallback: generate locally
-    currentNickname = generateNicknameLocally();
-    display.textContent = currentNickname;
+      let text = await res.text();
+      text = text
+        .replace(/^\/\*O_o\*\//, '')
+        .replace(/^google\.visualization\.Query\.setResponse\(/, '')
+        .replace(/\);?$/, '');
+
+      const parsed = JSON.parse(text);
+      const cols = parsed.table.cols.map(c => c.label || c.id);
+      const rows = parsed.table.rows.map(r => {
+        const obj = {};
+        r.c.forEach((cell, i) => {
+          obj[cols[i]] = cell?.v ?? null;
+        });
+        return obj;
+      });
+
+      // Build arrays – skip header row (already done by gviz)
+      const personas = [];
+      const botanicals = [];
+      let min = 10000, max = 99999;
+
+      rows.forEach(row => {
+        if (row["Action & Persona"]) personas.push(row["Action & Persona"].trim());
+        if (row["Botanical & Earth"]) botanicals.push(row["Botanical & Earth"].trim());
+
+        if (row.Min && !isNaN(Number(row.Min))) min = Number(row.Min);
+        if (row.Max && !isNaN(Number(row.Max))) max = Number(row.Max);
+      });
+
+      if (!personas.length || !botanicals.length) {
+        throw new Error("No words found in NameCreationSettings");
+      }
+
+      return { personas, botanicals, min, max };
+
+    } catch (err) {
+      console.error("gviz load failed:", err);
+      statusEl.textContent = "Could not load word lists – using fallback";
+      statusEl.className = "error";
+
+      // Hardcoded fallback if sheet is unreachable
+      return {
+        personas: ["Grand", "Shadow", "Wild", "Secret", "Mystic", "Rogue", "Hidden"],
+        botanicals: ["Basil", "Leaf", "Root", "Bloom", "Thorn", "Moss", "Fern"],
+        min: 10000,
+        max: 99999
+      };
+    }
   }
 
+  // ────────────────────────────────────────────────
+  // Generate nickname client-side from loaded words
+  // ────────────────────────────────────────────────
+  async function generateNickname() {
+    display.textContent = "Generating...";
+    statusEl.textContent = "";
+    statusEl.className = "";
+
+    try {
+      const config = await loadNicknameWords();
+
+      const p = config.personas[Math.floor(Math.random() * config.personas.length)];
+      const b = config.botanicals[Math.floor(Math.random() * config.botanicals.length)];
+      const num = Math.floor(Math.random() * (config.max - config.min + 1)) + config.min;
+
+      currentNickname = `${p} ${b} ${num}`;
+      display.textContent = currentNickname;
+
+    } catch (err) {
+      display.textContent = "(generation failed)";
+      statusEl.textContent = err.message || "Error generating nickname";
+      statusEl.className = "error";
+    }
+  }
+
+  // ────────────────────────────────────────────────
+  // Save chosen nickname via POST (no-cors)
+  // ────────────────────────────────────────────────
   async function acceptNickname() {
     if (!currentNickname) {
-      statusEl.textContent = 'No nickname generated yet';
-      statusEl.className = 'error';
+      statusEl.textContent = "No nickname generated yet";
+      statusEl.className = "error";
       return;
     }
 
-    statusEl.textContent = 'Saving...';
-    statusEl.className = '';
+    statusEl.textContent = "Saving...";
+    statusEl.className = "";
 
     try {
-      const res = await fetch(API_BASE, {
-        method: 'POST',
-        mode: 'no-cors',
-        cache: 'no-cache',
-        headers: { 'Content-Type': 'application/json' },
+      await fetch(API_BASE, {
+        method: "POST",
+        mode: "no-cors",
+        cache: "no-cache",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: 'set_nickname',
+          action: "set_nickname",
           nickname: currentNickname
         })
       });
 
-      // no-cors → assume success if no network error
+      // Assume success (no-cors hides response)
       statusEl.textContent = `Saved: ${currentNickname} ✓`;
-      statusEl.className = 'success';
+      statusEl.className = "success";
 
-      localStorage.setItem('gg_nickname', currentNickname);
+      localStorage.setItem("gg_nickname", currentNickname);
 
       setTimeout(() => {
-        alert(`Welcome, ${currentNickname}! Let's grow.`);
-        // window.location.href = 'dashboard.html'; // ← change to your next page
-      }, 1800);
+        alert(`Welcome, ${currentNickname}! Let's start planting.`);
+        // window.location.href = "dashboard.html"; // or your next page
+      }, 1600);
 
     } catch (err) {
-      statusEl.textContent = 'Save may have failed – check spreadsheet manually';
-      statusEl.className = 'error';
-      console.error('Save attempt failed', err);
+      statusEl.textContent = "Save request sent – check spreadsheet manually";
+      statusEl.className = "error";
+      console.warn("POST send:", err);
     }
   }
 
-  document.getElementById('btn-regenerate').addEventListener('click', generateNickname);
-  document.getElementById('btn-accept').addEventListener('click', acceptNickname);
+  // ────────────────────────────────────────────────
+  // Wire up buttons & start
+  // ────────────────────────────────────────────────
+  document.getElementById("btn-regenerate").addEventListener("click", generateNickname);
+  document.getElementById("btn-accept").addEventListener("click", acceptNickname);
 
-  // Initial load
+  // Initial generation
   generateNickname();
 </script>
+
 </body>
 </html>
