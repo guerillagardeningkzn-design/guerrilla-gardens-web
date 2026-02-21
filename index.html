@@ -80,49 +80,46 @@ const SHEET_ID = "1syH1gj9L-HHC3dlGoO-RTUthIXsEeUYC_81jlAvHfsg";
 
 async function fetchSheetData(tabName) {
   const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(tabName)}`;
-
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`gviz fetch: ${res.status}`);
-
     let text = await res.text();
 
-    // Stripping – this exact sequence worked (5460 chars cleaned, parse succeeded)
-    text = text
-      .replace(/^\/\*O_o\*\//, '')
-      .replace(/^google\.visualization\.Query\.setResponse\s*\(/i, '')
-      .replace(/\)\s*;?\s*$/, '')
-      .trim();
-
-    if (text.startsWith('(') && text.endsWith(')')) {
-      text = text.slice(1, -1).trim();
+    // Step 1: Remove common leading wrappers (no regex – use indexOf + slice)
+    const prefix = 'google.visualization.Query.setResponse(';
+    let startIdx = text.indexOf(prefix);
+    if (startIdx !== -1) {
+      text = text.slice(startIdx + prefix.length);
+    } else {
+      // Fallback if no standard prefix – check for raw JSON start
+      startIdx = text.indexOf('{');
+      if (startIdx !== -1) text = text.slice(startIdx);
     }
 
-    text = text.replace(/,\s*([}\]])/g, '$1');
+    // Step 2: Remove trailing ) ; and any extras
+    let endIdx = text.lastIndexOf(')');
+    if (endIdx !== -1) {
+      text = text.slice(0, endIdx);
+    }
+    text = text.trim();  // Clean whitespace
 
+    // Step 3: Fix trailing commas (simple loop instead of regex)
+    // This scans for , followed by } or ] (common JSON error in gviz)
+    let fixedText = '';
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === ',' && (text[i+1] === '}' || text[i+1] === ']')) {
+        continue;  // Skip the comma
+      }
+      fixedText += text[i];
+    }
+    text = fixedText;
+
+    // Step 4: Parse the cleaned text
     const parsed = JSON.parse(text);
 
-    function decodeHtmlEntities(str) {
-      const txt = document.createElement("textarea");
-      txt.innerHTML = str;
-      return txt.value;
-    }
-
-    const cols = (parsed.table.cols || []).map(col => {
-      const raw = col.label || col.id || `col${col.id || ''}`;
-      return decodeHtmlEntities(raw.trim());
-    });
-
-    const rows = (parsed.table.rows || []).map(r => {
-      const obj = {};
-      (r.c || []).forEach((cell, i) => {
-        if (i < cols.length) obj[cols[i]] = cell?.v ?? null;
-      });
-      return obj;
-    });
+    // ... (rest of the function unchanged: decodeHtmlEntities, extract cols/rows, etc.)
 
     return { success: true, columns: cols, rows };
-
   } catch (err) {
     console.error("gviz read failed:", err);
     return { success: false, error: err.message };
